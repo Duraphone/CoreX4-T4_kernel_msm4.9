@@ -1,0 +1,280 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_mdp {
+	dsi_jd9365d_huaxian_wxga_vid: qcom,mdss_dsi_jd9365d_huaxian_wxga_video{
+		qcom,mdss-dsi-panel-name =
+			"jd9365d huaxian wxga video";
+		qcom,mdss-dsi-panel-type = "dsi_video_mode";
+		qcom,mdss-dsi-panel-framerate = <60>;
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-panel-width = <800>;
+		qcom,mdss-dsi-panel-height = <1280>;
+		qcom,mdss-pan-physical-width-dimension = <135>;
+		qcom,mdss-pan-physical-height-dimension = <216>;
+		qcom,mdss-dsi-h-front-porch = <20>;
+		qcom,mdss-dsi-h-back-porch = <20>;
+		qcom,mdss-dsi-h-pulse-width = <20>;
+		qcom,mdss-dsi-h-sync-skew = <0>;
+		qcom,mdss-dsi-v-front-porch = <30>;
+		qcom,mdss-dsi-v-back-porch = <8>;
+		qcom,mdss-dsi-v-pulse-width = <4>;
+		qcom,mdss-dsi-h-left-border = <0>;
+		qcom,mdss-dsi-h-right-border = <0>;
+		qcom,mdss-dsi-v-top-border = <0>;
+		qcom,mdss-dsi-v-bottom-border = <0>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-underflow-color = <0xff>;
+		qcom,mdss-dsi-border-color = <0>;
+		qcom,mdss-dsi-on-command = [
+			15 01 00 00 00 00 02 E0 00   
+			15 01 00 00 00 00 02 E1 93
+			15 01 00 00 00 00 02 E2 65
+			15 01 00 00 00 00 02 E3 F8
+			15 01 00 00 00 00 02 80 03   
+			15 01 00 00 00 00 02 E0 01   
+			15 01 00 00 00 00 02 00 00
+			15 01 00 00 00 00 02 01 3C
+			15 01 00 00 00 00 02 03 00
+			15 01 00 00 00 00 02 04 3C   
+			15 01 00 00 00 00 02 17 00
+			15 01 00 00 00 00 02 18 F7
+			15 01 00 00 00 00 02 19 01
+			15 01 00 00 00 00 02 1A 00
+			15 01 00 00 00 00 02 1B F7
+			15 01 00 00 00 00 02 1C 01   
+			15 01 00 00 00 00 02 24 F1   
+			15 01 00 00 00 00 02 35 23   
+			15 01 00 00 00 00 02 37 09   
+			15 01 00 00 00 00 02 38 04
+			15 01 00 00 00 00 02 39 00
+			15 01 00 00 00 00 02 3A 01
+			15 01 00 00 00 00 02 3C 70
+			15 01 00 00 00 00 02 3D FF
+			15 01 00 00 00 00 02 3E FF
+			15 01 00 00 00 00 02 3F 7F   
+			15 01 00 00 00 00 02 40 06
+			15 01 00 00 00 00 02 41 A0
+			15 01 00 00 00 00 02 43 1E
+			15 01 00 00 00 00 02 44 0B
+			15 01 00 00 00 00 02 45 28   
+			15 01 00 00 00 00 02 55 01
+			15 01 00 00 00 00 02 57 69
+			15 01 00 00 00 00 02 59 0A
+			15 01 00 00 00 00 02 5A 2D
+			15 01 00 00 00 00 02 5B 1A
+			15 01 00 00 00 00 02 5C 15   
+			15 01 00 00 00 00 02 5D 7F
+			15 01 00 00 00 00 02 5E 69
+			15 01 00 00 00 00 02 5F 59
+			15 01 00 00 00 00 02 60 4C
+			15 01 00 00 00 00 02 61 47
+			15 01 00 00 00 00 02 62 38
+			15 01 00 00 00 00 02 63 3D
+			15 01 00 00 00 00 02 64 27
+			15 01 00 00 00 00 02 65 41
+			15 01 00 00 00 00 02 66 40
+			15 01 00 00 00 00 02 67 40
+			15 01 00 00 00 00 02 68 5B
+			15 01 00 00 00 00 02 69 46
+			15 01 00 00 00 00 02 6A 49
+			15 01 00 00 00 00 02 6B 3A
+			15 01 00 00 00 00 02 6C 34
+			15 01 00 00 00 00 02 6D 25
+			15 01 00 00 00 00 02 6E 15
+			15 01 00 00 00 00 02 6F 02
+			15 01 00 00 00 00 02 70 7F
+			15 01 00 00 00 00 02 71 69
+			15 01 00 00 00 00 02 72 59
+			15 01 00 00 00 00 02 73 4C
+			15 01 00 00 00 00 02 74 47
+			15 01 00 00 00 00 02 75 38
+			15 01 00 00 00 00 02 76 3D
+			15 01 00 00 00 00 02 77 27
+			15 01 00 00 00 00 02 78 41
+			15 01 00 00 00 00 02 79 40
+			15 01 00 00 00 00 02 7A 40
+			15 01 00 00 00 00 02 7B 5B
+			15 01 00 00 00 00 02 7C 46
+			15 01 00 00 00 00 02 7D 49
+			15 01 00 00 00 00 02 7E 3A
+			15 01 00 00 00 00 02 7F 34
+			15 01 00 00 00 00 02 80 25
+			15 01 00 00 00 00 02 81 15
+			15 01 00 00 00 00 02 82 02   
+			15 01 00 00 00 00 02 E0 02   
+			15 01 00 00 00 00 02 00 50
+			15 01 00 00 00 00 02 01 55
+			15 01 00 00 00 00 02 02 55
+			15 01 00 00 00 00 02 03 52
+			15 01 00 00 00 00 02 04 77
+			15 01 00 00 00 00 02 05 57
+			15 01 00 00 00 00 02 06 55
+			15 01 00 00 00 00 02 07 4E
+			15 01 00 00 00 00 02 08 4C
+			15 01 00 00 00 00 02 09 55
+			15 01 00 00 00 00 02 0A 4A
+			15 01 00 00 00 00 02 0B 48
+			15 01 00 00 00 00 02 0C 55
+			15 01 00 00 00 00 02 0D 46
+			15 01 00 00 00 00 02 0E 44
+			15 01 00 00 00 00 02 0F 40
+			15 01 00 00 00 00 02 10 55
+			15 01 00 00 00 00 02 11 55
+			15 01 00 00 00 00 02 12 55
+			15 01 00 00 00 00 02 13 55
+			15 01 00 00 00 00 02 14 55
+			15 01 00 00 00 00 02 15 55   
+			15 01 00 00 00 00 02 16 51
+			15 01 00 00 00 00 02 17 55
+			15 01 00 00 00 00 02 18 55
+			15 01 00 00 00 00 02 19 53
+			15 01 00 00 00 00 02 1A 77
+			15 01 00 00 00 00 02 1B 57
+			15 01 00 00 00 00 02 1C 55
+			15 01 00 00 00 00 02 1D 4F
+			15 01 00 00 00 00 02 1E 4D
+			15 01 00 00 00 00 02 1F 55
+			15 01 00 00 00 00 02 20 4B
+			15 01 00 00 00 00 02 21 49
+			15 01 00 00 00 00 02 22 55
+			15 01 00 00 00 00 02 23 47
+			15 01 00 00 00 00 02 24 45
+			15 01 00 00 00 00 02 25 41
+			15 01 00 00 00 00 02 26 55
+			15 01 00 00 00 00 02 27 55
+			15 01 00 00 00 00 02 28 55
+			15 01 00 00 00 00 02 29 55
+			15 01 00 00 00 00 02 2A 55
+			15 01 00 00 00 00 02 2B 55   
+			15 01 00 00 00 00 02 2C 01
+			15 01 00 00 00 00 02 2D 15
+			15 01 00 00 00 00 02 2E 15
+			15 01 00 00 00 00 02 2F 13
+			15 01 00 00 00 00 02 30 17
+			15 01 00 00 00 00 02 31 17
+			15 01 00 00 00 00 02 32 15
+			15 01 00 00 00 00 02 33 0D
+			15 01 00 00 00 00 02 34 0F
+			15 01 00 00 00 00 02 35 15
+			15 01 00 00 00 00 02 36 05
+			15 01 00 00 00 00 02 37 07
+			15 01 00 00 00 00 02 38 15
+			15 01 00 00 00 00 02 39 09
+			15 01 00 00 00 00 02 3A 0B
+			15 01 00 00 00 00 02 3B 11
+			15 01 00 00 00 00 02 3C 15
+			15 01 00 00 00 00 02 3D 15
+			15 01 00 00 00 00 02 3E 15
+			15 01 00 00 00 00 02 3F 15
+			15 01 00 00 00 00 02 40 15
+			15 01 00 00 00 00 02 41 15   
+			15 01 00 00 00 00 02 42 00
+			15 01 00 00 00 00 02 43 15
+			15 01 00 00 00 00 02 44 15
+			15 01 00 00 00 00 02 45 12
+			15 01 00 00 00 00 02 46 17
+			15 01 00 00 00 00 02 47 17
+			15 01 00 00 00 00 02 48 15
+			15 01 00 00 00 00 02 49 0C
+			15 01 00 00 00 00 02 4A 0E
+			15 01 00 00 00 00 02 4B 15
+			15 01 00 00 00 00 02 4C 04
+			15 01 00 00 00 00 02 4D 06
+			15 01 00 00 00 00 02 4E 15
+			15 01 00 00 00 00 02 4F 08
+			15 01 00 00 00 00 02 50 0A
+			15 01 00 00 00 00 02 51 10
+			15 01 00 00 00 00 02 52 15
+			15 01 00 00 00 00 02 53 15
+			15 01 00 00 00 00 02 54 15
+			15 01 00 00 00 00 02 55 15
+			15 01 00 00 00 00 02 56 15
+			15 01 00 00 00 00 02 57 15   
+			15 01 00 00 00 00 02 58 40
+			15 01 00 00 00 00 02 5B 10
+			15 01 00 00 00 00 02 5C 06
+			15 01 00 00 00 00 02 5D 40
+			15 01 00 00 00 00 02 5E 00
+			15 01 00 00 00 00 02 5F 00
+			15 01 00 00 00 00 02 60 40
+			15 01 00 00 00 00 02 61 03
+			15 01 00 00 00 00 02 62 04
+			15 01 00 00 00 00 02 63 6C
+			15 01 00 00 00 00 02 64 6C
+			15 01 00 00 00 00 02 65 75
+			15 01 00 00 00 00 02 66 08
+			15 01 00 00 00 00 02 67 B4
+			15 01 00 00 00 00 02 68 08
+			15 01 00 00 00 00 02 69 6C
+			15 01 00 00 00 00 02 6A 6C
+			15 01 00 00 00 00 02 6B 0C
+			15 01 00 00 00 00 02 6D 00
+			15 01 00 00 00 00 02 6E 00
+			15 01 00 00 00 00 02 6F 88
+			15 01 00 00 00 00 02 75 BB
+			15 01 00 00 00 00 02 76 00
+			15 01 00 00 00 00 02 77 05
+			15 01 00 00 00 00 02 78 2A   
+			15 01 00 00 00 00 02 E0 04
+			15 01 00 00 00 00 02 09 11
+			15 01 00 00 00 00 02 0E 48   
+			15 01 00 00 00 00 02 E0 00
+			
+			05 01 00 00 78 00 02 11 00
+			05 01 00 00 0A 00 02 29 00];
+		qcom,mdss-dsi-off-command = [
+			05 01 00 00 14 00 02 28 00
+			05 01 00 00 78 00 02 10 00];
+		qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+		qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
+		qcom,mdss-dsi-h-sync-pulse = <0>;
+		qcom,mdss-dsi-traffic-mode = "burst_mode";
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+		qcom,mdss-dsi-panel-timings-phy-v2 = [
+			1e 1b 04 05 02 03 04 a0
+			1e 1b 04 05 02 03 04 a0
+			1e 1b 04 05 02 03 04 a0
+			1e 1b 04 05 02 03 04 a0
+			1e 1d 03 05 02 03 04 a0];
+		qcom,mdss-dsi-t-clk-post = <0x0a>;
+		qcom,mdss-dsi-t-clk-pre = <0x1c>;
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+
+		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_i2c";
+		qcom,mdss-dsi-bl-min-level = <5>;
+		qcom,mdss-dsi-bl-max-level = <2047>;///3000-74.4mA  2800--69.4mA  2047
+		qcom,mdss-brightness-max-level = <2047>;
+		
+/*		qcom,mdss-dsi-bl-pmic-pwm-frequency = <54>; //period=54us freq=18.75K
+		qcom,mdss-dsi-bl-pmic-bank-select = <0>;
+		qcom,mdss-dsi-pwm-gpio = <&pm8953_gpios 8 0>;
+		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+		qcom,mdss-dsi-bl-min-level = <5>;
+		qcom,mdss-dsi-bl-max-level = <255>;
+		qcom,mdss-brightness-max-level = <255>;
+*/
+		qcom,mdss-dsi-reset-sequence = <1 10>, <0 10>, <1 20>;
+		qcom,mdss-dsi-lp11-init;
+		qcom,mdss-dsi-bl-delay-ms = <30>;
+        qcom,mdss-dsi-post-init-delay = <1>;
+		qcom,mdss-dsi-panel-rotation-type = "mdp";
+		qcom,mdss-dsi-panel-orientation = "180";	
+	};
+};
