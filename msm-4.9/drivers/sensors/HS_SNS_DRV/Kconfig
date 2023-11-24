@@ -1,0 +1,361 @@
+#
+# hisense sensors device configuration
+#
+
+menu "Hisense sensors device support"
+	depends on SENSORS
+
+config HS_SNS_ACC
+	bool "Provide Accelerometer Device Support"
+	default n
+	depends on SENSORS
+	help
+	  Say Y here, a list of availible accelerometer chips shall be shown.
+	  Then you can select one or more chip for one project.
+
+choice
+	prompt "Choice Acc sensor plant side"
+	default HS_SNS_ADSP_ACC
+	depends on HS_SNS_ACC
+
+config HS_SNS_AP_ACC
+	bool "The Acc sensor plant in the AP side"
+
+config HS_SNS_ADSP_ACC
+	bool "The Acc sensor plant in the ADSP side"
+	select HS_SNS_STEP
+
+endchoice
+
+config HS_SNS_KXTJ9
+	bool "Kionix kxt* serial Acc chips"
+	depends on HS_SNS_AP_ACC
+	default n
+	help
+		Say y here if you want to use Kionix kxtj9 kxtj2 kxtik1004 acc chips.
+
+config HS_SNS_MC3XXX
+	bool "mCube mc3xxx serial Acc chips"
+	depends on HS_SNS_AP_ACC
+	default n
+	help
+		Say y here if you want to use mCube mc3xxx serial acc chips.
+
+config ACC_SENSOR_VENDOR
+	string "ACC SENSOR VENDOR"
+	depends on HS_SNS_ADSP_ACC
+	default ""
+	help
+		Add vendor info for ACC sensor.
+
+config ACC_SENSOR_TYPE
+	string "ACC SENSOR TYPE"
+	depends on HS_SNS_ADSP_ACC
+	default ""
+	help
+		Add type info for ACC sensor.
+
+config HS_SNS_MAG
+	bool "Provide Magnetic Device Support"
+	default n
+	depends on HS_SNS_ACC
+	help
+		Say Y here, a list of availible Magnetic chips shall be shown.
+		Then you can select one or more chip for one project.
+	
+choice
+	prompt "Choice Mag sensor plant side"
+	default HS_SNS_ADSP_MAG
+	depends on HS_SNS_MAG
+
+config HS_SNS_AP_MAG
+	bool "The Mag sensor plant in the AP side"
+
+config HS_SNS_ADSP_MAG
+	bool "The Mag sensor plant in the ADSP side"
+
+endchoice
+
+config HS_SNS_AKM09911
+	bool "AKM akm09911 Mag chips"
+	default n
+	depends on HS_SNS_AP_MAG
+	help
+		Say y here if you want to use AKM akm09911 Mag chips.
+
+config MAG_SENSOR_VENDOR
+	string "MAG SENSOR VENDOR"
+	depends on HS_SNS_ADSP_MAG
+	default ""
+	help
+		Add vendor info for MAG sensor.
+		This option only used for ADSP.
+
+config MAG_SENSOR_TYPE
+	string "MAG SENSOR TYPE"
+	depends on HS_SNS_ADSP_MAG
+	default ""
+	help
+		Add type info for MAG sensor.
+		This option only used for ADSP.
+
+config HS_SNS_GYRO
+	bool "Provide Gyroscope Device Support"
+	default n
+	depends on HS_SNS_ACC
+	help
+	  Say Y here, a list of availible Gyroscope chips shall be shown.
+	  Then you can select one or more chip for one project.
+	
+choice
+	prompt "Choice Gyro sensor plant side"
+	default HS_SNS_ADSP_GYRO
+	depends on HS_SNS_GYRO
+
+config HS_SNS_AP_GYRO
+	bool "The Mag sensor plant in the AP side"
+
+config HS_SNS_ADSP_GYRO
+	bool "The Mag sensor plant in the ADSP side"
+
+endchoice
+
+config GYRO_SENSOR_VENDOR
+	string "GYRO SENSOR VENDOR"
+	depends on HS_SNS_ADSP_GYRO
+	default ""
+	help
+		Add vendor info for GYRO sensor.
+		This option only used for ADSP.
+
+config GYRO_SENSOR_TYPE
+	string "GYRO SENSOR TYPE"
+	depends on HS_SNS_ADSP_GYRO
+	default ""
+	help
+		Add type info for GYRO sensor.
+		This option only used for ADSP.
+
+config HS_SNS_ALS_PS
+	bool "Provide Optical Sensor Device Support"
+	default n
+	depends on SENSORS
+	help
+		Say Y here, a list of availible Optical Sensor chips shall be shown.
+
+config HS_SNS_ALS
+	bool "Provide Optical Sensor Device Support"
+	default n
+	depends on SENSORS
+	help
+		Say Y here, a list of availible Optical Sensor chips shall be shown.
+
+config HS_SNS_AP_RGB
+	bool "Provide RGB Device Support On AP Side"
+	depends on HS_SNS_AP_ALS
+	default n
+	help
+		Add support product info for RGB sensor.
+		This option only used for AP side.
+	
+config HS_SNS_STK3X3X
+	bool "Sensortek stk3x3x alsps chips"
+	default n
+    depends on HS_SNS_ALS_PS
+	help
+	    Say y here if you want to use Sensortek stk3x3x alsps chips.
+
+config HS_SNS_CM36686
+	bool "Capella cm36686 alsps chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use Capella cm36686 alsps chips.
+		
+config HS_SNS_STK3X1X
+	bool "Sensortek stk3x1x alsps chips"
+	default n
+    depends on HS_SNS_ALS_PS || HS_SNS_ALS
+	help
+	    Say y here if you want to use Sensortek stk3x1x alsps chips.
+
+config SMALL_HOLE_CM36686S
+	bool "Capella cm36686s small hole alsps chips"
+	depends on HS_SNS_CM36686
+	default n
+	help
+		Say Y here if you want to use Capella cm36686s small hole alsps chips.
+
+config HS_SNS_CM36686_PS
+	bool "Select PS function Support for CM36686 On AP Side"
+	default y
+	depends on HS_SNS_CM36686
+
+config HS_SNS_CM36686_ALS
+	bool "Select ALS function Support for CM36686 On AP Side"
+	default n
+	depends on HS_SNS_CM36686
+
+config USE_WHITE_CHANNEL_COMPENSATION
+	bool "Capella cm36686 white channel compensation"
+	default n
+	depends on HS_SNS_CM36686
+	help
+		Say Y here if you want to use Capella cm36686 white channel compensation.
+
+config HS_SNS_CM32183
+	bool "Capella cm32183 als chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use Capella cm32183 alsps chips.
+
+config HS_SNS_ELAN_ALSPS
+	bool "Elan epl2590/epl88055 alsps chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use Elan epl2590/epl88055 alsps chips.
+
+config HS_SNS_TMD2725
+	bool "AMS tmd2725 alsps chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use AMS tmd2725 alsps chips.
+
+config HS_SNS_TMD3702
+	bool "AMS tmd3702 RGB alsps chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use AMS tmd3702 alsps chips.
+
+config HS_SNS_CM3232
+	bool "Capella cm3232 als chips"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say y here if you want to use Capella cm3232 als chips.
+
+config HS_SNS_SAR
+	bool "Provide Optical Sensor Device Support"
+	default n
+	depends on SENSORS
+	help
+		Say Y here, a list of availible Optical Sensor chips shall be shown.
+		
+config HS_SNS_A96T346
+	bool "a96t346 sar chips"
+	default n
+    depends on HS_SNS_SAR
+	help
+	    Say y here if you want to use Sensortek a96t346 sar chips.
+	    	
+config HS_SNS_UV
+	bool "Provide Single UV Device Support"
+	default n
+	depends on HS_SNS_ALS_PS
+	help
+		Say Y here, a list of availible Proximity chips shall be shown.
+		Then you can select only one chip for one project. 
+
+config HS_SNS_SI1133
+	bool "SILABS SI1133 chips"
+	default n		
+	depends on HS_SNS_UV
+	help
+		Say y here if you want to use SILABS SI1133 als chips.
+		
+config HS_SNS_BARO
+	bool "Provide Pressure Device Support"
+	default n
+	depends on SENSORS
+	help
+		Say Y here, a list of availible Pressure chips shall be shown.
+		Then you can select only one chip for one project.	
+	
+choice
+	prompt "Choice Pressure sensor plant side"
+	default HS_SNS_ADSP_BARO
+	depends on HS_SNS_BARO
+
+config HS_SNS_AP_BARO
+	bool "The Pressure sensor plant in the AP side"
+
+config HS_SNS_ADSP_BARO
+	bool "The Pressure sensor plant in the ADSP side"
+
+endchoice
+
+config BARO_SENSOR_VENDOR
+	string "BARO SENSOR VENDOR"
+	depends on HS_SNS_ADSP_BARO
+	default ""
+	help
+		Add vendor info for Pressure sensor.
+		This option only used for ADSP.
+
+config BARO_SENSOR_TYPE
+	string "BARO SENSOR TYPE"
+	depends on HS_SNS_ADSP_BARO
+	default ""
+	help
+		Add type info for Pressure sensor.
+		This option only used for ADSP.
+
+config HS_SNS_TEM_HUM
+	bool "Provide Temperature and Humidity Device Support"
+	default n
+	depends on SENSORS
+	help
+	  Say Y here, a list of availible Temperature and Humidity chips shall be shown.
+	  Then you can select only one chip for one project.
+	
+choice
+	prompt "Choice Temperature and Humidity sensor plant side"
+	default HS_SNS_ADSP_TEM_HUM
+	depends on HS_SNS_TEM_HUM
+
+config HS_SNS_AP_TEM_HUM
+	bool "The Temperature and Humidity sensor plant in the AP side"
+
+config HS_SNS_ADSP_TEM_HUM
+	bool "The Temperature and Humidity sensor plant in the ADSP side"
+
+endchoice
+
+config TEM_HUM_SENSOR_VENDOR
+	string "TEM_HUM SENSOR VENDOR"
+	depends on HS_SNS_ADSP_TEM_HUM
+	default ""
+	help
+		Add vendor info for Pressure sensor.
+		This option only used for ADSP.
+
+config TEM_HUM_SENSOR_TYPE
+	string "TEM_HUM SENSOR TYPE"
+	depends on HS_SNS_ADSP_TEM_HUM
+	default ""
+	help
+		Add type info for Pressure sensor.
+		This option only used for ADSP.
+
+config HS_SNS_STEP
+	bool "Provide Step Counter / Detector Support"
+	default n
+	depends on HS_SNS_ADSP_ACC
+	help
+	  Say Y here, a list of availible Step Counter / Detector shall be shown.
+	  Then you can select only one chip for one project.
+	
+config HS_SNS_HALL
+	bool "Provide Hall Device Support"
+	default n
+	depends on SENSORS
+	help
+	  Say Y here, select hall chip .
+
+
+endmenu
+

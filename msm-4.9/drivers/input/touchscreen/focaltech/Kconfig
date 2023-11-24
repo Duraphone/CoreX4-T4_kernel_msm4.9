@@ -1,0 +1,82 @@
+#
+# Focaltech Touchscreen driver configuration
+#
+
+config FT_INCELL_CHIP
+       bool "FocalTech touchscreens FH support."
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 touchscreen FH function.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_FH
+       bool "FocalTech touchscreens FH support."
+       depends on TOUCHSCREEN_USB_CHECK
+       help
+         Say Y here if you need a ft5X06 touchscreen FH function.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_GESTURE
+       bool "FocalTech touchscreens gesture function"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 touchscreen gesture function.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_GESTURE_DRIVER
+       bool "FocalTech touchscreens gesture function realized in driver"
+       depends on TOUCHSCREEN_FT5X06_GESTURE
+       help
+         Say Y here if you need a ft5X06 touchscreen gesture function in driver.
+	 else say N
+	 
+config TOUCHSCREEN_FACE_DETECTION
+       bool "FocalTech touchscreens face detection function realized in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 touchscreen gesture function in driver.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_GLOVE
+       bool "FocalTech touchscreens glove mode function realized in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 glove mode in driver.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_HALL
+       bool "FocalTech touchscreens hall mode function realized in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 hall mode in driver.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_PRAMUPDATE
+       bool "FocalTech touchscreens ft8719 pramboot data in driver"
+       depends on TOUCHSCREEN_FT5X06
+       default n
+       help
+         Say Y here if you need a ft8719 pramboot data in driver.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_APK_TEST
+       bool "FocalTech touchscreens apk test function realized in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 apk test in driver.
+	 else say N
+
+
+config TOUCHSCREEN_FT5X06_SUB
+       bool "FocalTech touchscreens sub function realized in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you need a ft5X06 as sub TP in driver.
+	 else say N
+
+config TOUCHSCREEN_FT5X06_GFF_PANNEL
+       bool "FocalTech touchscreens GFF_PANNEL not support diffshow node in driver"
+       depends on TOUCHSCREEN_FT5X06
+       help
+         Say Y here if you ft5X06 is a GFF_IC in driver.
+	 else say N

@@ -1,0 +1,23 @@
+
+config RS_RECORDER_SUPPORT
+	bool "support runtime state recoder"
+	depends on HISENSE_DEBUG_CTRL
+	default n
+	help
+	  print error info to buffer when happen runtime error
+
+config SUPPORT_WARM_RESET
+	bool "current platform support warm reset"
+	depends on RS_RECORDER_SUPPORT
+	default n
+	help
+	  If use platform support warm reset, then say Y,
+	  or N.
+
+config EXCEPTION_MONITOR
+	bool "module exception monitor"
+	depends on HISENSE_DEBUG_CTRL
+	default n
+	help
+	  Collect and save the exception log of all modules.
+

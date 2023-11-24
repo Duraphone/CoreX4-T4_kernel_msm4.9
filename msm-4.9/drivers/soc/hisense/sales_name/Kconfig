@@ -1,0 +1,8 @@
+
+config PROJECTNAME_REPORT
+	depends on HISENSE_PRODUCT_DEVINFO
+	bool "project name register of product"
+	default n
+	help
+	  Default use the serial number to report the product name
+
