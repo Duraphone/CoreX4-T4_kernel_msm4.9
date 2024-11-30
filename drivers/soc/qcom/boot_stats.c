@@ -81,6 +81,7 @@ static void print_boot_stats(void)
 			readl_relaxed(mpm_counter_base));
 	pr_info("KPI: Kernel MPM Clock frequency = %u\n",
 			mpm_counter_freq);
+
 }
 
 unsigned long long int msm_timer_get_sclk_ticks(void)
@@ -146,3 +147,4 @@ int boot_stats_exit(void)
 	iounmap(mpm_counter_base);
 	return 0;
 }
+

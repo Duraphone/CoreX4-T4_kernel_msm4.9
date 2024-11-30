@@ -1,0 +1,42 @@
+config HS_FINGERPRINT
+	tristate "fingerprint drvier support"
+	help
+	  Say Y here to enable fingerprint driver support!
+
+config FINGERPRINT_SUNWAVE_SW9651
+	tristate "SUNWAVE SW9651 fingerprint drvier support"
+	depends on HS_FINGERPRINT
+	help
+	  Say Y here to enable sunwave sw9651 driver support!
+	 
+config FINGERPRINT_FPC_FPC1291
+	tristate "FPC FPC1145 fingerprint drvier support"
+	depends on HS_FINGERPRINT
+	help
+	  Say Y here to enable FPC FPC1145 driver support!
+
+config FINGERPRINT_FPC_IS_1291
+        tristate "FPC vendor fingerprint name is 1291"
+        depends on HS_FINGERPRINT
+        help
+          Say Y here to ensure FPC fingerprintIC is 1291!
+
+config FINGERPRINT_GOODIX_GF5126
+	tristate "GOODIX GF5126 fingerprint drvier support"
+	depends on HS_FINGERPRINT
+	help
+	  Say Y here to enable FPC GOODIX GF5126 driver support!
+
+config FINGERPRINT_NAV_DIRECTION_CHANGE
+	bool "Fingerprint nav direction change"
+	default n
+	depends on HS_FINGERPRINT
+	help
+	  Say Y here to change fingerprint navigation direction!
+
+config FINGERPRINT_CHIPONE
+	tristate "CHIPONE fingerprint driver support"
+	depends on HS_FINGERPRINT
+	help
+	  Say Y here to enable CHIPONE Fingerpirnt driver support!
+

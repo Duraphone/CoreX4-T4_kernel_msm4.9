@@ -14,7 +14,8 @@
  * GNU General Public License for more details.
  */
 
-#define pr_fmt(fmt)	"%s: " fmt, __func__
+//#define pr_fmt(fmt)	"%s: " fmt, __func__
+#define pr_fmt(fmt) "LCD-Mdss-fb: " fmt
 
 #include <linux/videodev2.h>
 #include <linux/bootmem.h>
@@ -53,6 +54,10 @@
 #include "mdss_smmu.h"
 #include "mdss_mdp.h"
 #include "mdp3_ctrl.h"
+#include <linux/his_debug_base.h>
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+#include <linux/awaken_sys_event.h>
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 #include "mdss_sync.h"
 
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
@@ -80,6 +85,82 @@
  * Default value is set to 1 sec.
  */
 #define MDP_TIME_PERIOD_CALC_FPS_US	1000000
+
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+#include <linux/awaken_sys_event.h>
+
+struct async_mfd_info {
+	struct msm_fb_data_type *mfd;
+	struct work_struct unblank_work;
+	struct delayed_work blank_work;
+	struct mutex mlock;
+};
+
+extern void ts_suspend_for_lcd_async_use(void);  //hmct add to make tp enter suspend
+
+static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd);
+static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
+	int req_power_state);
+
+static struct async_mfd_info g_mfd_info;
+static int async_unblank_running = 0;
+static int unblank_fb_status = 0x0;
+
+static int check_wake_reason_for_async(void)
+{
+	int event = 0;
+
+	event = get_current_awaken_event();
+	return ((event == AWAKEN_EVENT_PWRKEY)
+		|| (event == AWAKEN_EVENT_FP)
+		|| (event == AWAKEN_EVENT_PSENSOR));
+}
+
+static int mdss_dsi_async_unblank(struct msm_fb_data_type *mfd,
+		struct mutex *mlock)
+{
+	int ret = 0;
+
+	if ((mfd == NULL) || (mlock == NULL)) {
+		pr_err("%s: The parameters is NULL\n", __func__);
+		return -1;
+	}
+
+	pr_err("async start unblank\n");
+	mutex_lock(mlock);
+	unblank_fb_status = 0x1;
+	ret = mdss_fb_blank_unblank(mfd);
+      	ts_suspend_for_lcd_async_use(); //hmct add to make tp enter suspend
+	mutex_unlock(mlock);
+	pr_err("async end unblank\n");
+
+	return ret;
+}
+
+static void async_unblank_fb_work(struct work_struct *work)
+{
+	struct async_mfd_info *mfd_info;
+
+	mfd_info = container_of(work, struct async_mfd_info, unblank_work);
+	mdss_dsi_async_unblank(mfd_info->mfd, &mfd_info->mlock);
+}
+
+static void async_blank_fb_work(struct work_struct *work)
+{
+	struct async_mfd_info *mfd_info;
+
+	pr_err("Enter async blank panel Work\n");
+	mfd_info = container_of(work, struct async_mfd_info, blank_work.work);
+
+	mutex_lock(&mfd_info->mlock);
+	if (unblank_fb_status == 0x1)
+		mdss_fb_blank_blank(mfd_info->mfd, MDSS_PANEL_POWER_OFF);
+
+	unblank_fb_status = 0;
+	mutex_unlock(&mfd_info->mlock);
+	pr_err("Exit async blank panel Work\n");
+}
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 
 static struct fb_info *fbi_list[MAX_FBI_LIST];
 static int fbi_list_index;
@@ -121,6 +202,8 @@ static int mdss_fb_send_panel_event(struct msm_fb_data_type *mfd,
 					int event, void *arg);
 static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
 		int type);
+static void mdss_fb_update_backlight_work(struct work_struct *work);
+
 void mdss_fb_no_update_notify_timer_cb(unsigned long data)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)data;
@@ -530,6 +613,27 @@ static void __mdss_fb_idle_notify_work(struct work_struct *work)
 	mfd->idle_state = MDSS_FB_IDLE;
 }
 
+/* hmct add for dynamic fps*/
+static void mdss_fb_force_fps_work(struct work_struct *work)
+{
+	struct mdss_panel_data *pdata;
+	struct delayed_work *dw = to_delayed_work(work);
+	struct msm_fb_data_type *mfd = container_of(dw, struct msm_fb_data_type,
+		force_fps_work);
+	struct dynamic_fps_data data = {0};
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+	if (!pdata) {
+		pr_err("no panel connected!\n");
+		return;
+	}
+	data.fps = mfd->force_fps_t;
+	if (mdss_mdp_dfps_update_params(mfd, pdata, &data))
+		pr_err("failed to set dfps params!\n");
+
+	pr_debug(" mdss_fb_force_fps_work set fps=%d\n", data.fps);
+}
+
 
 static ssize_t mdss_fb_get_fps_info(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -637,6 +741,20 @@ static ssize_t mdss_fb_get_panel_info(struct device *dev,
 			pinfo->hdr_properties.display_primaries[7],
 			pinfo->panel_orientation);
 
+	return ret;
+}
+
+static ssize_t mdss_fb_get_panel_name(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = fbi->par;
+	struct mdss_panel_info *pinfo = mfd->panel_info;
+	int ret;
+
+	ret = scnprintf(buf, PAGE_SIZE,
+			"%s",
+			pinfo->panel_name);
 	return ret;
 }
 
@@ -911,6 +1029,88 @@ static ssize_t mdss_fb_idle_pc_notify(struct device *dev,
 	return scnprintf(buf, PAGE_SIZE, "idle power collapsed\n");
 }
 
+/* hmct add for dynamic fps */
+static ssize_t mdss_fb_get_force_fps(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+
+	ret = snprintf(buf, PAGE_SIZE, "%d\n",
+		       mfd->force_fps_t);
+	return ret;
+}
+
+static ssize_t mdss_fb_set_force_fps(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc = 0;
+	int value = 0;
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+
+	rc = kstrtoint(buf, 10, &value);
+	if (rc) {
+		pr_err("kstrtoint failed. rc=%d\n", rc);
+		return rc;
+	}
+
+	pr_info(" set force fps = %d\n", value);
+	mfd->force_fps_t = value;
+
+	return count;
+}
+
+/* hmct add for lock bl brightness use to power test */
+static ssize_t mdss_fb_get_bl_force(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_data *pdata;
+	struct mdss_panel_info *pinfo;
+	int ret;
+
+	pdata = dev_get_platdata(&mfd->pdev->dev);
+	if (!pdata) {
+		pr_err("no panel connected!\n");
+		return -EINVAL;
+	}
+	pinfo = &pdata->panel_info;
+
+	ret = scnprintf(buf, PAGE_SIZE, "%d\n", pinfo->bl_force);
+
+	return ret;
+}
+
+static ssize_t mdss_fb_set_bl_force(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	struct mdss_panel_info *pinfo;
+	u32 bl_force;
+
+	if (!mfd || !mfd->panel_info) {
+		pr_err("%s: Panel info is NULL!\n", __func__);
+		return count;
+	}
+
+	pinfo = mfd->panel_info;
+
+	if (kstrtouint(buf, 0, &bl_force)) {
+		pr_err("kstrtouint buf error!\n");
+		return count;
+	}
+
+	if (bl_force <= pinfo->bl_max)
+		pinfo->bl_force = bl_force;
+	else
+		pinfo->bl_force = pinfo->bl_max;
+
+	return count;
+}
 static DEVICE_ATTR(msm_fb_type, 0444, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, 0644, mdss_fb_show_split,
 					mdss_fb_store_split);
@@ -919,6 +1119,7 @@ static DEVICE_ATTR(idle_time, 0644,
 	mdss_fb_get_idle_time, mdss_fb_set_idle_time);
 static DEVICE_ATTR(idle_notify, 0444, mdss_fb_get_idle_notify, NULL);
 static DEVICE_ATTR(msm_fb_panel_info, 0444, mdss_fb_get_panel_info, NULL);
+static DEVICE_ATTR(msm_fb_panel_name, 0444, mdss_fb_get_panel_name, NULL);
 static DEVICE_ATTR(msm_fb_src_split_info, 0444, mdss_fb_get_src_split_info,
 	NULL);
 static DEVICE_ATTR(msm_fb_thermal_level, 0644,
@@ -933,6 +1134,13 @@ static DEVICE_ATTR(msm_fb_persist_mode, 0644,
 	mdss_fb_get_persist_mode, mdss_fb_change_persist_mode);
 static DEVICE_ATTR(idle_power_collapse, 0444, mdss_fb_idle_pc_notify, NULL);
 
+/* hmct add for dynamic fps */
+static DEVICE_ATTR(force_fps, 0444,
+	mdss_fb_get_force_fps, mdss_fb_set_force_fps);
+
+/* hmct add for lock bl brightness use to power test */
+static DEVICE_ATTR(bl_force, S_IRUGO | S_IWUSR,
+	mdss_fb_get_bl_force, mdss_fb_set_bl_force);
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
@@ -940,6 +1148,7 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_idle_time.attr,
 	&dev_attr_idle_notify.attr,
 	&dev_attr_msm_fb_panel_info.attr,
+	&dev_attr_msm_fb_panel_name.attr,
 	&dev_attr_msm_fb_src_split_info.attr,
 	&dev_attr_msm_fb_thermal_level.attr,
 	&dev_attr_msm_fb_panel_status.attr,
@@ -947,6 +1156,10 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_measured_fps.attr,
 	&dev_attr_msm_fb_persist_mode.attr,
 	&dev_attr_idle_power_collapse.attr,
+	/* hmct add for dynamic fps */
+	&dev_attr_force_fps.attr,
+	/* hmct add for lock bl brightness use to power test */
+	&dev_attr_bl_force.attr,
 	NULL,
 };
 
@@ -1356,7 +1569,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	pm_runtime_enable(mfd->fbi->dev);
 
 	/* android supports only one lcd-backlight/lcd for now */
-	if (!lcd_backlight_registered) {
+	if (!lcd_backlight_registered && mfd->panel_info) {
 		backlight_led.brightness = mfd->panel_info->brightness_max;
 		backlight_led.max_brightness = mfd->panel_info->brightness_max;
 		if (led_classdev_register(&pdev->dev, &backlight_led))
@@ -1398,13 +1611,28 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	 * an idle event, user space tries to fall back to GPU composition which
 	 * can lead to increased load when there are new frames.
 	 */
-	if (mfd->mdp.input_event_handler &&
+	if (mfd->mdp.input_event_handler && mfd->panel_info &&
 		((mfd->panel_info->type == MIPI_CMD_PANEL) ||
 		(mfd->panel_info->type == MIPI_VIDEO_PANEL)))
 		if (mdss_fb_register_input_handler(mfd))
 			pr_err("failed to register input handler\n");
 
 	INIT_DELAYED_WORK(&mfd->idle_notify_work, __mdss_fb_idle_notify_work);
+	/* hmct add for dynamic fps*/
+	INIT_DELAYED_WORK(&mfd->force_fps_work, mdss_fb_force_fps_work);
+	mfd->force_fps_t = 60;
+	/* hisense add */
+	INIT_DELAYED_WORK(&mfd->bkl_work, mdss_fb_update_backlight_work);
+
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+	pr_err("async the mfd->index = %d\n", mfd->index);
+	if (mfd->index == 0) {
+		g_mfd_info.mfd = mfd;
+		INIT_WORK(&g_mfd_info.unblank_work, async_unblank_fb_work);
+		INIT_DELAYED_WORK(&g_mfd_info.blank_work, async_blank_fb_work);
+		mutex_init(&g_mfd_info.mlock);
+	}
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 
 	return rc;
 }
@@ -1498,6 +1726,23 @@ static int mdss_fb_suspend_sub(struct msm_fb_data_type *mfd)
 		return 0;
 
 	pr_debug("mdss_fb suspend index=%d\n", mfd->index);
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+	if (mfd->index == 0) {
+		mutex_lock(&g_mfd_info.mlock);
+		if (unblank_fb_status == 0x1) {
+			pr_err("async suspend blank powerdown start\n");
+	#ifdef CONFIG_ASYNC_DOUBLE_PANEL
+			/* cancel async blank delayed work */
+			cancel_delayed_work_sync(&g_mfd_info.blank_work);
+	#endif /* CONFIG_ASYNC_DOUBLE_PANEL */
+			mdss_fb_blank_blank(g_mfd_info.mfd, MDSS_PANEL_POWER_OFF);
+			pr_err("async suspend blank powerdown end\n");
+		}
+
+		unblank_fb_status = 0;
+		mutex_unlock(&g_mfd_info.mlock);
+	}
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 
 	ret = mdss_fb_pan_idle(mfd);
 	if (ret) {
@@ -1584,6 +1829,13 @@ static int mdss_fb_resume_sub(struct msm_fb_data_type *mfd)
 	}
 	mfd->is_power_setting = false;
 	complete_all(&mfd->power_set_comp);
+
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+	if ((check_wake_reason_for_async()) && (mfd->index == 0)) {
+		async_unblank_running = 1;
+		schedule_work(&g_mfd_info.unblank_work);
+	}
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 
 	return ret;
 }
@@ -1802,6 +2054,40 @@ void mdss_fb_update_backlight(struct msm_fb_data_type *mfd)
 	mutex_unlock(&mfd->bl_lock);
 }
 
+/* hisense add */
+static void mdss_fb_update_backlight_work(struct work_struct *work)
+{
+	struct delayed_work *dw = to_delayed_work(work);
+	struct msm_fb_data_type *mfd = container_of(dw, struct msm_fb_data_type,
+		bkl_work);
+	struct mdss_panel_data *pdata;
+	u32 temp;
+	bool bl_notify = false;
+
+	if (mfd->unset_bl_level == U32_MAX)
+		return;
+	mutex_lock(&mfd->bl_lock);
+	if (!mfd->allow_bl_update) {
+		pdata = dev_get_platdata(&mfd->pdev->dev);
+		if ((pdata) && (pdata->set_backlight)) {
+			mfd->bl_level = mfd->unset_bl_level;
+			temp = mfd->bl_level;
+			if (mfd->mdp.ad_calc_bl)
+				(*mfd->mdp.ad_calc_bl)(mfd, temp, &temp,
+								&bl_notify);
+			if (bl_notify)
+				mdss_fb_bl_update_notify(mfd,
+					NOTIFY_TYPE_BL_AD_ATTEN_UPDATE);
+			mdss_fb_bl_update_notify(mfd, NOTIFY_TYPE_BL_UPDATE);
+			pdata->set_backlight(pdata, temp);
+			mfd->bl_level_scaled = mfd->unset_bl_level;
+			mfd->allow_bl_update = true;
+		}
+	}
+	mutex_unlock(&mfd->bl_lock);
+}
+/* hisense add end */
+
 static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
@@ -1909,20 +2195,24 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 	complete(&mfd->no_update.comp);
 
 	mfd->op_enable = false;
+	/* hisense add */
+	if (mfd->panel_info->bl_delay_ms)
+		cancel_delayed_work_sync(&mfd->bkl_work);
+
 	if (mdss_panel_is_power_off(req_power_state)) {
 		/* Stop Display thread */
 		if (mfd->disp_thread)
 			mdss_fb_stop_disp_thread(mfd);
 		mutex_lock(&mfd->bl_lock);
-		if (mfd->unset_bl_level != U32_MAX)
+		/*if (mfd->unset_bl_level != U32_MAX)
 			current_bl = mfd->unset_bl_level;
-		else
-			current_bl = mfd->bl_level;
+		else*/ //hisense delete it to resolve backlight flashing problem
+		current_bl = mfd->bl_level;
 		mfd->allow_bl_update = true;
 		mdss_fb_set_backlight(mfd, 0);
 		mfd->allow_bl_update = false;
-		if (current_bl)
-			mfd->unset_bl_level = current_bl;
+		//if (current_bl) //hisense delete it to resolve backlight flashing problem 
+		mfd->unset_bl_level = current_bl;
 		mutex_unlock(&mfd->bl_lock);
 	}
 	mfd->panel_power_state = req_power_state;
@@ -1968,6 +2258,9 @@ static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd)
 		return 0;
 	}
 
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+	update_screen_init_time(1);
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 	mfd->allow_secure_bl_update = false;
 
 	if (mfd->mdp.on_fnc) {
@@ -2028,6 +2321,9 @@ static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd)
 	}
 
 error:
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+	update_screen_init_time(0);
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 	return ret;
 }
 
@@ -2083,8 +2379,43 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
-		pr_debug("unblank called. cur pwr state=%d\n", cur_power_state);
+		pr_err("ioctl unblank called. cur pwr state=%d index=%d \n",
+				cur_power_state, mfd->index);
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+		if (0 != mfd->index) {
+			pr_err("ioctl start unblank index > 0\n");
+			ret = mdss_fb_blank_unblank(mfd);
+  #ifdef CONFIG_ASYNC_DOUBLE_PANEL
+			if (async_unblank_running == 1) {
+				schedule_delayed_work(&g_mfd_info.blank_work, HZ);
+				async_unblank_running = 0;
+			}
+  #endif /* CONFIG_ASYNC_DOUBLE_PANEL */
+			pr_err("ioctl end unblank index > 0\n");
+			break;
+		}
+
+		if ((async_unblank_running == 1) && (unblank_fb_status == 0x1)) {
+			/* wait async init work finish */
+			/* set to 0x10 as fast as possible */
+			unblank_fb_status = 0x10;
+			async_unblank_running = 0;
+			pr_err("async unblank FB finish\n");
+		} else {
+			if (async_unblank_running == 1) {
+				cancel_work_sync(&g_mfd_info.unblank_work);
+				async_unblank_running = 0;
+			}
+			/* set to 0x10 as fast as possible */
+			unblank_fb_status = 0x10;
+
+			pr_err("ioctl start unblank index=0\n");
+			ret = mdss_fb_blank_unblank(mfd);
+			pr_err("ioctl end unblank index=0\n");
+		}
+#else  /* CONFIG_ASYNC_UNBLANK_FB */
 		ret = mdss_fb_blank_unblank(mfd);
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 		break;
 	case BLANK_FLAG_ULP:
 		req_power_state = MDSS_PANEL_POWER_LP2;
@@ -2117,7 +2448,7 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	case FB_BLANK_POWERDOWN:
 	default:
 		req_power_state = MDSS_PANEL_POWER_OFF;
-		pr_debug("blank powerdown called\n");
+		pr_err("blank powerdown called, index=%d\n", mfd->index);
 		ret = mdss_fb_blank_blank(mfd, req_power_state);
 		break;
 	}
@@ -2139,10 +2470,16 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 	s64 actual_time;
 
 	start = ktime_get();
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+	mutex_lock(&g_mfd_info.mlock);
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 	ret = mdss_fb_pan_idle(mfd);
 	if (ret) {
 		pr_warn("mdss_fb_pan_idle for fb%d failed. ret=%d\n",
 			mfd->index, ret);
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+		mutex_unlock(&g_mfd_info.mlock);
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 		return ret;
 	}
 	mutex_lock(&mfd->mdss_sysfs_lock);
@@ -2155,6 +2492,9 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 			mfd->suspend.panel_power_state = MDSS_PANEL_POWER_LP1;
 		else
 			mfd->suspend.panel_power_state = MDSS_PANEL_POWER_OFF;
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+		pr_err("Hisense, op_enable is 0\n");
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 		ret = 0;
 		goto end;
 	}
@@ -2180,6 +2520,9 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 
 end:
 	mutex_unlock(&mfd->mdss_sysfs_lock);
+#ifdef CONFIG_ASYNC_UNBLANK_FB
+	mutex_unlock(&g_mfd_info.mlock);
+#endif /* CONFIG_ASYNC_UNBLANK_FB */
 	return ret;
 }
 
@@ -3796,8 +4139,17 @@ static int __mdss_fb_perform_commit(struct msm_fb_data_type *mfd)
 	}
 
 skip_commit:
-	if (!ret)
-		mdss_fb_update_backlight(mfd);
+	/* hisense modify start*/
+	if ((!ret) && (mfd->unset_bl_level) && (!mfd->allow_bl_update)){
+		if (!mfd->index)
+			pr_buf_info("%s\n", __func__);
+		if (mfd->panel_info->bl_delay_ms)
+			schedule_delayed_work(&mfd->bkl_work,
+				msecs_to_jiffies(mfd->panel_info->bl_delay_ms));
+		else
+			mdss_fb_update_backlight(mfd);
+	}
+	/* hisense modify end*/
 
 	if (IS_ERR_VALUE((unsigned long)ret) || !sync_pt_data->flushed) {
 		mdss_fb_release_kickoff(mfd);
@@ -4666,7 +5018,7 @@ static int mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 		if (!layer_list) {
 			pr_err("unable to allocate memory for layers\n");
 			ret = -ENOMEM;
-			goto err;
+			goto err_kzalloc;
 		}
 
 		ret = copy_from_user(layer_list, input_layer_list, buffer_size);
@@ -4758,6 +5110,7 @@ err:
 		mdss_mdp_free_layer_pp_info(&layer_list[i]);
 	}
 	kfree(layer_list);
+err_kzalloc:
 	kfree(output_layer);
 
 	return ret;

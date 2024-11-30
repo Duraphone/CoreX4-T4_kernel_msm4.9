@@ -95,6 +95,18 @@ struct dsi_cmd_desc {
 	char *payload;
 };
 
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+struct spi_ctrl_hdr {
+	char wait;	/* ms */
+	short dlen;	/* 16 bits */
+} __packed;
+
+struct spi_cmd_desc {
+	struct spi_ctrl_hdr hdr;
+	char *payload;
+};
+#endif
+
 #define CMD_REQ_MAX     4
 #define CMD_REQ_RX      0x0001
 #define CMD_REQ_COMMIT  0x0002

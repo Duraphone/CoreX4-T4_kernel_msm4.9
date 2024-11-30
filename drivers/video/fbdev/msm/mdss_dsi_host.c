@@ -1171,6 +1171,7 @@ void mdss_dsi_cmd_bta_sw_trigger(struct mdss_panel_data *pdata)
 	pr_debug("%s: BTA done, status = %d\n", __func__, status);
 }
 
+#if 0
 static int mdss_dsi_read_status(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	int i, rc, *lenp;
@@ -1285,6 +1286,90 @@ int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 
 	return ret;
 }
+#else
+/**
+ * mdss_dsi_reg_status_check() - Check dsi panel status through reg read
+ * @ctrl_pdata: pointer to the dsi controller structure
+ *
+ * This function can be used to check the panel status through reading the
+ * status register from the panel.
+ *
+ * Return: positive value if the panel is in good state, negative value or
+ * zero otherwise.
+ */
+int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
+{
+	int i = 0;
+	int ret = 0;
+	u32 esd_read_len = 0;
+	char esd_rbuffer[MDSS_DSI_ESD_CHECK_PARAMS_NUM] = {0};
+	char *esd_rbuffer_p;
+	struct mdss_panel_info *pinfo = NULL;
+	struct mdss_panel_data *pdata = NULL;
+
+	pdata = &ctrl_pdata->panel_data;
+	pinfo = &ctrl_pdata->panel_data.panel_info;
+	esd_rbuffer_p = esd_rbuffer;
+
+	if (ctrl_pdata == NULL || !pinfo->esd_reg_num) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return 0;
+	}
+
+	if ((!mdss_dsi_is_panel_on_interactive(pdata))||(!ctrl_pdata->panel_data.panel_info.esd_rdy)) {
+		pr_err("%s: Panel is power off, no need to check status\n", __func__);
+		return 1;
+	}
+
+	esd_read_len = pinfo->esd_reg_val_len / pinfo->esd_reg_num;
+
+	if(!esd_read_len){
+		pr_err("%s: Invalid esd_read_len\n", __func__);
+		return 0;
+	}
+
+	pr_debug("%s: Checking Register status\n", __func__);
+
+	mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
+			  MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_ON);
+
+	if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+		mdss_dsi_set_tx_power_mode(0, &ctrl_pdata->panel_data);
+
+	for(i = 0; i < pinfo->esd_reg_num; i++){
+		pr_debug("%s pinfo->esd_reg[%d]:0x%x\n", __func__, i, pinfo->esd_reg[i]);
+		mdss_dsi_panel_cmd_read( ctrl_pdata, pinfo->esd_reg[i], 0x00, NULL, esd_rbuffer_p, esd_read_len);
+		esd_rbuffer_p += esd_read_len;
+	}
+
+	if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+		mdss_dsi_set_tx_power_mode(1, &ctrl_pdata->panel_data);
+
+	if (!strcmp (pinfo->ic_type, "ft8719")) {
+		esd_rbuffer[pinfo->esd_reg_val_len -1] = esd_rbuffer[pinfo->esd_reg_val_len -1] & 0x0F;
+		pr_debug("ic_type = %s, changed the last 4bit of esd_reg_val[%d] to 0x%02x\n", pinfo->ic_type, pinfo->esd_reg_val_len -1, esd_rbuffer[pinfo->esd_reg_val_len -1] );
+	}
+
+	pr_debug("esd check reg = 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n", esd_rbuffer[0], esd_rbuffer[1], esd_rbuffer[2], esd_rbuffer[3], esd_rbuffer[4], esd_rbuffer[5], esd_rbuffer[6], esd_rbuffer[7]);
+	for(i = 0; i < pinfo->esd_reg_val_len; i++){
+		if(esd_rbuffer[i] != pinfo->esd_reg_val[i]){
+			pr_err("esd check reg = 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n", esd_rbuffer[0], esd_rbuffer[1], esd_rbuffer[2], esd_rbuffer[3], esd_rbuffer[4], esd_rbuffer[5], esd_rbuffer[6], esd_rbuffer[7]);
+			pr_err("%s: Read back value from panel is incorrect\n",
+					__func__);
+			ret = -EINVAL;
+			break;
+		} else {
+			ret = 1;
+		}
+	}
+
+	mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
+			  MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_OFF);
+	pr_debug("%s: Read register done with ret: %d\n", __func__, ret);
+
+	return ret;
+}
+#endif
 
 void mdss_dsi_dsc_config(struct mdss_dsi_ctrl_pdata *ctrl, struct dsc_desc *dsc)
 {

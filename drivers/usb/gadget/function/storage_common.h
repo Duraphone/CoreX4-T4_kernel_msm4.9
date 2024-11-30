@@ -209,7 +209,7 @@ extern struct usb_ss_ep_comp_descriptor fsg_ss_bulk_in_comp_desc;
 extern struct usb_endpoint_descriptor fsg_ss_bulk_out_desc;
 extern struct usb_ss_ep_comp_descriptor fsg_ss_bulk_out_comp_desc;
 extern struct usb_descriptor_header *fsg_ss_function[];
-
+int fsg_get_toc(struct fsg_lun *curlun, int msf, int format, u8 *buf);
 void fsg_lun_close(struct fsg_lun *curlun);
 int fsg_lun_open(struct fsg_lun *curlun, const char *filename);
 int fsg_lun_fsync_sub(struct fsg_lun *curlun);

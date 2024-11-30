@@ -34,6 +34,9 @@
 #include <linux/qpnp/qpnp-pbs.h>
 #include <linux/qpnp/qpnp-misc.h>
 #include <linux/power_supply.h>
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+#include <linux/awaken_sys_event.h>
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 
 #define PMIC_VER_8941           0x01
 #define PMIC_VERSION_REG        0x0105
@@ -156,6 +159,9 @@
 #define QPNP_PON_BUFFER_SIZE			9
 
 #define QPNP_POFF_REASON_UVLO			13
+#define PM_PON_RESET_CFG_WARM_RESET		1
+#define PM_PON_RESET_CFG_NORMAL_SHUTDOWN	4
+#define PM_PON_RESET_CFG_HARD_RESET		7
 
 enum qpnp_pon_version {
 	QPNP_PON_GEN1_V1,
@@ -312,6 +318,39 @@ static const char * const qpnp_poff_reason[] = {
 	[38] = "Triggered from S3_RESET_PBS_NACK",
 	[39] = "Triggered from S3_RESET_KPDPWR_ANDOR_RESIN (power key and/or reset line)",
 };
+
+#ifdef CONFIG_HS_POWERON_REASON
+const char *qpnp_get_pon_off_reason(int is_power_on, int reg_val)
+{
+	const char *reason = NULL;
+
+	if (1 == is_power_on)
+		reason = qpnp_pon_reason[reg_val];
+	else
+		reason = qpnp_poff_reason[reg_val];
+
+	return reason;
+}
+
+const char *qpnp_get_current_power_reason(int is_power_on, int *reg_val)
+{
+	struct qpnp_pon *pon = sys_reset_dev;
+	const char *reason = NULL;
+
+	if (pon == NULL)
+		return NULL;
+
+	if (1 == is_power_on) {
+		*reg_val = pon->pon_trigger_reason;
+		reason = qpnp_pon_reason[pon->pon_trigger_reason];
+	} else {
+		*reg_val = pon->pon_power_off_reason;
+		reason = qpnp_poff_reason[pon->pon_power_off_reason];
+	}
+
+	return reason;
+}
+#endif /* CONFIG_HS_POWERON_REASON */
 
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
@@ -1294,6 +1333,65 @@ qpnp_config_reset(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 	return 0;
 }
 
+static int qpnp_config_reset_for_hs(u32 pon_type, u32 s2_type,
+				u32 s1_timer, u32 s2_timer, u32 enable)
+{
+	int rc;
+	u8 i;
+	struct qpnp_pon *pon = sys_reset_dev;
+	struct qpnp_pon_config cfg = {0};
+
+	pr_info("%s: pon_type %d, s2_type %d, s1_timer %d, s2_timer %d, enable %d\n",
+		__func__, pon_type, s2_type, s1_timer, s2_timer, enable);
+
+	if (NULL == pon) {
+		pr_err("%s: pon device not init!\n", __func__);
+		return -ENODEV;
+	}
+
+	for (i = 0; i < pon->num_pon_config; i++) {
+		if (pon->pon_cfg[i].pon_type == pon_type) {
+			cfg = pon->pon_cfg[i];
+			break;
+		}
+	}
+
+	if (i == pon->num_pon_config) {
+		pr_err("%s: Cant find pon config!\n", __func__);
+		return 1;
+	}
+
+	cfg.s2_type = s2_type;
+	cfg.s1_timer = s1_timer;
+	cfg.s2_timer = s2_timer;
+	if (enable) {
+		qpnp_config_reset(pon, &cfg);
+	} else {
+		rc = qpnp_pon_masked_write(pon, cfg.s2_cntl2_addr,
+					QPNP_PON_S2_CNTL_EN, 0);
+		if (rc) {
+			dev_err(&pon->pdev->dev, "Unable to configure S2 enable\n");
+			return rc;
+		}
+	}
+	return 0;
+}
+
+void hs_set_pm_pon_resin(int debug)
+{
+	pr_info("debug %d.\n", debug);
+	if (debug) {
+		qpnp_config_reset_for_hs(PON_RESIN,
+			PM_PON_RESET_CFG_WARM_RESET, 10256, 2000, 1);
+
+		qpnp_pon_reset_config(sys_reset_dev, PON_POWER_OFF_WARM_RESET);
+	} else {
+		qpnp_config_reset_for_hs(PON_RESIN, 0, 0, 0, 0);
+
+		qpnp_pon_reset_config(sys_reset_dev, PON_POWER_OFF_DVDD_HARD_RESET);
+	}
+}
+
 static int
 qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 {
@@ -1310,6 +1408,9 @@ qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 							cfg->state_irq);
 			return rc;
 		}
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+		register_irqnum_and_event(cfg->state_irq, AWAKEN_EVENT_PWRKEY);
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 		if (cfg->use_bark) {
 			rc = devm_request_irq(&pon->pdev->dev, cfg->bark_irq,
 						qpnp_kpdpwr_bark_irq,
@@ -1333,6 +1434,9 @@ qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 							cfg->state_irq);
 			return rc;
 		}
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+		register_irqnum_and_event(cfg->state_irq, AWAKEN_EVENT_RESIN);
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 		if (cfg->use_bark) {
 			rc = devm_request_irq(&pon->pdev->dev, cfg->bark_irq,
 						qpnp_resin_bark_irq,

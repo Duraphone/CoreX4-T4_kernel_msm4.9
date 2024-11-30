@@ -29,6 +29,7 @@
 #include <linux/workqueue.h>
 
 #include <soc/qcom/subsystem_restart.h>
+#include <linux/productinfo.h>
 
 #define IMAGE_LOAD_CMD 1
 #define IMAGE_UNLOAD_CMD 0
@@ -78,7 +79,40 @@ static struct attribute *attrs[] = {
 
 static struct platform_device *slpi_private;
 static struct work_struct slpi_ldr_work;
-
+static int ProductInfoRegister(void)
+{
+#if defined(CONFIG_HS_SNS_ADSP_ACC)
+	productinfo_register(PRODUCTINFO_SENSOR_ACCELEROMETER_ID,  CONFIG_ACC_SENSOR_TYPE,CONFIG_ACC_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_GYRO)
+	productinfo_register(PRODUCTINFO_SENSOR_GYRO_ID, CONFIG_GYRO_SENSOR_TYPE,CONFIG_GYRO_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_MAG)
+	productinfo_register(PRODUCTINFO_SENSOR_COMPASS_ID, CONFIG_MAG_SENSOR_TYPE, CONFIG_MAG_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_ALSPS)
+	productinfo_register(PRODUCTINFO_SENSOR_ALSPS_ID, CONFIG_ALSP_SENSOR_TYPE, CONFIG_ALSP_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_ADSP_HALL)
+	productinfo_register(PRODUCTINFO_SENSOR_HALL_ID, CONFIG_HALL_SENSOR_TYPE, CONFIG_HALL_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_ALS)
+	productinfo_register(PRODUCTINFO_SENSOR_ALS_ID, CONFIG_ALS_SENSOR_TYPE, CONFIG_ALS_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_PS)
+	productinfo_register(PRODUCTINFO_SENSOR_PS_ID, CONFIG_PS_SENSOR_TYPE, CONFIG_PS_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_BARO)
+	productinfo_register(PRODUCTINFO_SENSOR_BARO_ID, CONFIG_BARO_SENSOR_TYPE, CONFIG_BARO_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_TEM_HUM)
+	productinfo_register(PRODUCTINFO_SENSOR_TEM_HUM_ID, CONFIG_TEM_HUM_SENSOR_TYPE, CONFIG_TEM_HUM_SENSOR_VENDOR);
+#endif
+#if defined(CONFIG_HS_SNS_ADSP_HR)
+	productinfo_register(PRODUCTINFO_SENSOR_HR_ID, CONFIG_HR_SENSOR_TYPE, CONFIG_HR_SENSOR_VENDOR);
+#endif
+	return 0;
+}
 static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 {
 	struct platform_device *pdev = slpi_private;
@@ -396,7 +430,7 @@ static int sensors_ssc_probe(struct platform_device *pdev)
 	}
 
 	INIT_WORK(&slpi_ldr_work, slpi_load_fw);
-
+	ProductInfoRegister();
 	return 0;
 
 cdev_add_err:

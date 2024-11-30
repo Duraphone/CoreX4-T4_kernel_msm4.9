@@ -247,57 +247,6 @@ static void diag_context_release(struct kref *kref)
 	spin_unlock(&ctxt->lock);
 	kfree(ctxt);
 }
-
-static void diag_update_pid_and_serial_num(struct diag_context *ctxt)
-{
-	struct usb_composite_dev *cdev = ctxt->cdev;
-	struct usb_gadget_strings **table;
-	struct usb_string *s;
-	struct usb_gadget_string_container *uc;
-	struct dload_struct local_diag_dload = { 0 };
-
-	/*
-	 * update pid and serial number to dload only if diag
-	 * interface is zeroth interface.
-	 */
-	if (intf_desc.bInterfaceNumber)
-		return;
-
-	if (!diag_dload) {
-		pr_debug("%s: unable to update PID and serial_no\n", __func__);
-		return;
-	}
-
-	/* update pid */
-	local_diag_dload.magic_struct.pid = PID_MAGIC_ID;
-	local_diag_dload.pid = cdev->desc.idProduct;
-	local_diag_dload.magic_struct.serial_num = SERIAL_NUM_MAGIC_ID;
-
-	list_for_each_entry(uc, &cdev->gstrings, list) {
-		table = (struct usb_gadget_strings **)uc->stash;
-		if (!table) {
-			pr_err("%s: can't update dload cookie\n", __func__);
-			break;
-		}
-
-		for (s = (*table)->strings; s && s->s; s++) {
-			if (s->id == cdev->desc.iSerialNumber) {
-				strlcpy(local_diag_dload.serial_number, s->s,
-					SERIAL_NUMBER_LENGTH);
-				goto update_dload;
-			}
-		}
-
-	}
-
-update_dload:
-	pr_debug("%s: dload:%pK pid:%x serial_num:%s\n",
-				__func__, diag_dload, local_diag_dload.pid,
-				local_diag_dload.serial_number);
-
-	memcpy_toio(diag_dload, &local_diag_dload, sizeof(local_diag_dload));
-}
-
 static void diag_write_complete(struct usb_ep *ep,
 		struct usb_request *req)
 {
@@ -845,12 +794,6 @@ static int diag_function_bind(struct usb_configuration *c,
 		if (!f->ss_descriptors)
 			goto fail;
 	}
-
-	/* Allow only first diag channel to update pid and serial no */
-	if (ctxt == list_first_entry(&diag_dev_list,
-				struct diag_context, list_item))
-		diag_update_pid_and_serial_num(ctxt);
-
 	return 0;
 fail:
 	if (f->ss_descriptors)

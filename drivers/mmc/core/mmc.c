@@ -21,7 +21,9 @@
 #include <linux/mmc/mmc.h>
 #include <linux/reboot.h>
 #include <trace/events/mmc.h>
+#include <linux/productinfo.h>
 
+#include <linux/his_debug_base.h>
 #include "core.h"
 #include "host.h"
 #include "bus.h"
@@ -30,7 +32,8 @@
 
 #define DEFAULT_CMD6_TIMEOUT_MS	500
 #define MIN_CACHE_EN_TIMEOUT_MS 1600
-
+static char firmware_version[17] = {0};
+static char *manufacture_name;
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -126,6 +129,27 @@ static int mmc_decode_cid(struct mmc_card *card)
 		pr_err("%s: card has unknown MMCA version %d\n",
 			mmc_hostname(card->host), card->csd.mmca_vsn);
 		return -EINVAL;
+	}
+    //emmc product info, hisense code
+	if(!card->host->index)
+    {
+		if(card->cid.manfid==CID_MANFID_SANDISK)
+			manufacture_name="SANDISK";
+		else if(card->cid.manfid==CID_MANFID_TOSHIBA)
+			manufacture_name="TOSHIBA";
+		else if(card->cid.manfid==CID_MANFID_MICRON)
+			manufacture_name="MICRON";
+		else if(card->cid.manfid==CID_MANFID_SAMSUNG)
+			manufacture_name="SAMSUNG";
+		else if(card->cid.manfid==CID_MANFID_KINGSTON)
+			manufacture_name="KINGSTON";
+		else if(card->cid.manfid==CID_MANFID_HYNIX)
+			manufacture_name="HYNIX";
+		else if(card->cid.manfid==CID_MANFID_NUMONYX_MICRON)
+			manufacture_name="NUMONYX MICRON";
+		else 
+			manufacture_name="UNKNOWN";
+
 	}
 
 	return 0;
@@ -367,7 +391,97 @@ static void mmc_manage_gp_partitions(struct mmc_card *card, u8 *ext_csd)
 		}
 	}
 }
+#define EXT_CSD_FIRMWARE_VERSION 254
+#define EXT_CSD_PRE_EOL_INFO 267
+#define EXT_CSD_LIFE_TIME_EST_TYPE_A 268
+#define EXT_CSD_LIFE_TIME_EST_TYPE_B 269
+static int mmc_array_to_str(char *str, u8 *ext_csd, int start, int length)
+{
+	int i = 0, j = 0;
+	char *m_str = str;
+	char m_temp[2];
+	if (start < 0 || start > 511) return false;
+	if (length > 511) return false;
+	if (str == NULL || ext_csd == NULL) return false;
+	for (i = 0; i < length; i++) {
+		m_temp[0] = ext_csd[start+i] & 0x0f;
+		m_temp[1] = (ext_csd[start+i] & 0xf0) >> 4;
+		for (j = 0; j < 2; j++) { 
+			if (m_temp[j] >= 0 && m_temp[j] <= 9)
+				*m_str = m_temp[j] + '0';
+			if (m_temp[j] >= 0xa && m_temp[j] <= 0xf)
+				*m_str = m_temp[j] - 10 + 'a';
+			m_str++;
+		}
+	}
+	*m_str = '\0';
+	return true;
+}
+void mmc_add_emmcinfo_to_productinfo(struct mmc_card *card, u8 *ext_csd)
+{
+	char emmc_product_info[90];
+	char emmc_more[90];
+	char type_a[10];
+	char type_b[10];
+	int m_err = 0;
+	int m_ext_csd_rev = 0;
+	int mdt_year = 0, mdt_month = 0;
+	int life_time_a = 0, life_time_b = 0, pre_eol = 0;
+	char *eol_str;
 
+	m_err = mmc_array_to_str(firmware_version, ext_csd, EXT_CSD_FIRMWARE_VERSION, 8);
+	m_ext_csd_rev = ext_csd[EXT_CSD_REV];
+	mdt_year = (int)(card->cid.year);
+	mdt_month = (int)(card->cid.month);
+	snprintf(emmc_product_info, sizeof(emmc_product_info),
+	"MNM %s, MID 0x%x, PNM %s, PRV 0x%x, FWV 0x%s, MDT %d/%d",
+	manufacture_name, card->cid.manfid,
+	card->cid.prod_name, card->cid.prv, firmware_version, 
+	mdt_year, mdt_month);
+	
+	pre_eol = ext_csd[EXT_CSD_PRE_EOL_INFO];
+	life_time_a = ext_csd[EXT_CSD_LIFE_TIME_EST_TYPE_A];
+	life_time_b = ext_csd[EXT_CSD_LIFE_TIME_EST_TYPE_B];
+
+	if (life_time_a < 0xb) {
+		sprintf(type_a, "%d%%~%d%%", life_time_a-1>0?((life_time_a-1)*10):0,
+			life_time_a*10);
+	} else {
+		sprintf(type_a, "%d Max", life_time_a);
+	}
+
+	if (life_time_b < 0xb) {
+		sprintf(type_b, "%d%%~%d%%", life_time_b-1>0?((life_time_b-1)*10):0,
+			life_time_b*10);
+	} else {
+		sprintf(type_b, "%d Max", life_time_b);
+	}
+
+	switch(pre_eol) {
+		case 0:
+			eol_str = "Not Defined";
+			break;
+		case 1:
+			eol_str = "Normal";
+			break;
+		case 2:
+			eol_str = "Warning";
+			break;
+		case 3:
+			eol_str = "Urgent";
+			break;
+		default:
+			eol_str = "Reserved";
+	}
+
+	snprintf(emmc_more, sizeof(emmc_more), "PSN %x, TYPE_A %s, TYPE_B %s, EOL %s", 
+		card->cid.serial, type_a, type_b, eol_str);
+	productinfo_register(PRODUCTINFO_EMMC_NAND_ID,
+		emmc_product_info, NULL);
+	productinfo_register(PRODUCTINFO_EMMC_MORE,
+		emmc_more, NULL);
+
+}
 /* Minimum partition switch timeout in milliseconds */
 #define MMC_MIN_PART_SWITCH_TIME	300
 
@@ -707,6 +821,10 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			ext_csd[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B];
 	}
 
+	dev_bi.sectors_num = card->ext_csd.sectors;
+	dev_bi.sector_size = card->ext_csd.data_sector_size;
+
+	mmc_add_emmcinfo_to_productinfo(card, ext_csd);
 	/* eMMC v5.1 or later */
 	if (card->ext_csd.rev >= 8)
 		card->ext_csd.enhanced_rpmb_supported =
@@ -1951,6 +2069,22 @@ reinit:
 		goto err;
 	}
 
+#ifdef CONFIG_MMC_FFU
+	if (oldcard && (oldcard->state & MMC_STATE_FFUED)) {
+		/* After FFU, some fields in CID may change,
+		 * so just copy new CID into card->raw_cid
+		 */
+		memcpy((void *)oldcard->raw_cid, (void *)cid, sizeof(cid));
+		err = mmc_decode_cid(oldcard);
+		if (err)
+			goto free_card;
+
+		card = oldcard;
+		card->nr_parts = 0;
+		oldcard = NULL;
+
+	} else
+#endif /*CONFIG_MMC_FFU*/
 	if (oldcard) {
 		if (memcmp(cid, oldcard->raw_cid, sizeof(cid)) != 0) {
 			err = -ENOENT;
@@ -2369,6 +2503,12 @@ free_card:
 err:
 	return err;
 }
+#ifdef CONFIG_MMC_FFU
+int mmc_reinit_oldcard(struct mmc_host *host)
+{
+	return mmc_init_card(host, host->card->ocr, host->card);
+}
+#endif /*CONFIG_MMC_FFU*/
 
 static int mmc_can_sleepawake(struct mmc_host *host)
 {
@@ -2636,6 +2776,7 @@ static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
+    pr_info("%s: %s: %d start\n", mmc_hostname(host), __func__, __LINE__);
 	err = mmc_suspend_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to suspend clock scaling (%d)\n",
@@ -2720,6 +2861,7 @@ out:
 	mmc_release_host(host);
 	if (err)
 		mmc_resume_clk_scaling(host);
+    pr_info("%s: %s: %d end\n", mmc_hostname(host), __func__, __LINE__);
 	return err;
 }
 
@@ -2823,7 +2965,7 @@ static int _mmc_resume(struct mmc_host *host)
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
-
+    pr_info("%s: %s: %d start\n", mmc_hostname(host), __func__, __LINE__);
 	mmc_claim_host(host);
 
 	if (!mmc_card_suspended(host->card)) {
@@ -2873,6 +3015,7 @@ static int _mmc_resume(struct mmc_host *host)
 			mmc_hostname(host), __func__, err);
 
 out:
+	pr_info("%s: %s: %d end\n", mmc_hostname(host), __func__, __LINE__);
 	return err;
 }
 

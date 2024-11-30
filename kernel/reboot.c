@@ -366,6 +366,20 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	return ret;
 }
 
+void hs_reboot_war_action(bool is_reboot)
+{
+
+	mutex_lock(&reboot_mutex);
+	pr_err("%s: reboot %d\n", __func__, is_reboot);
+	emergency_sync();
+	if(is_reboot)
+		kernel_restart(NULL);
+	else
+		kernel_power_off();
+	mutex_unlock(&reboot_mutex);
+}
+EXPORT_SYMBOL_GPL(hs_reboot_war_action);
+
 static void deferred_cad(struct work_struct *dummy)
 {
 	kernel_restart(NULL);

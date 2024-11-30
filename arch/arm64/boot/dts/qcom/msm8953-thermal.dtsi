@@ -252,7 +252,7 @@
 			};
 		};
 	};
-
+/*  delete by libin31
 	case-therm-adc {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;
@@ -267,7 +267,7 @@
 			};
 		};
 	};
-
+*/
 	gpu1-step {
 		polling-delay-passive = <250>;
 		polling-delay = <0>;

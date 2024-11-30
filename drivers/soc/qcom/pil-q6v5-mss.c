@@ -30,6 +30,10 @@
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smem.h>
+#include <linux/his_debug_base.h>
+#ifdef CONFIG_RS_RECORDER_SUPPORT
+#include <linux/rs_recorder.h>
+#endif /* CONFIG_RS_RECORDER_SUPPORT */
 
 #include "peripheral-loader.h"
 #include "pil-q6v5.h"
@@ -40,6 +44,9 @@
 #define STOP_ACK_TIMEOUT_MS	1000
 
 #define subsys_to_drv(d) container_of(d, struct modem_data, subsys_desc)
+#ifdef CONFIG_HISENSE_RESTART_MODEM
+static struct modem_data *modem_drv;
+#endif
 
 static void log_modem_sfr(void)
 {
@@ -59,6 +66,19 @@ static void log_modem_sfr(void)
 
 	strlcpy(reason, smem_reason, min(size, MAX_SSR_REASON_LEN));
 	pr_err("modem subsystem failure reason: %s.\n", reason);
+
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	if (get_debug_flag_bit(DEBUG_ENABLE_BIT)) {
+		subsystem_report("modem", smem_reason, true);
+	} else {
+		subsystem_report("modem", smem_reason, false);
+
+#ifdef CONFIG_RS_RECORDER_SUPPORT
+		/* if debug version, do not save dump */
+		rs_exec_dump_task("modem", 1, __LINE__, false);
+#endif /* CONFIG_RS_RECORDER_SUPPORT */
+	}
+#endif /* CONFIG_SUBSYS_ERR_REPORT */
 }
 
 static void restart_modem(struct modem_data *drv)
@@ -266,6 +286,10 @@ static int pil_subsys_init(struct modem_data *drv,
 		ret = -ENOMEM;
 		goto err_minidump;
 	}
+
+#ifdef CONFIG_HISENSE_RESTART_MODEM
+      modem_drv=drv;
+#endif
 
 	return 0;
 
@@ -495,6 +519,53 @@ static struct platform_driver pil_mss_driver = {
 	},
 };
 
+#ifdef CONFIG_HISENSE_RESTART_MODEM
+static void restart_modem_by_ap(void)
+{
+	printk("modem_drv->subsys_desc.name is %s: \n",modem_drv->subsys_desc.name);
+	//printk("modem_drv->subsys.restart_level is%s: \n",modem_drv->subsys.restart_level);
+	restart_modem(modem_drv);
+}
+
+static ssize_t modem_restart_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int value;
+
+	if (sscanf(buf, "%d", &value) != 1) {
+		pr_err("debug_store: sscanf is wrong!\n");
+		return -EINVAL;
+	}
+
+	printk("modem will be restart by force .\n");
+	restart_modem_by_ap();
+
+	return len;
+}
+
+static ssize_t modem_restart_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", 0);
+}
+
+static DEVICE_ATTR(modem_restart, S_IWUSR | S_IWGRP | S_IRUGO,
+		modem_restart_show, modem_restart_store);
+
+static void modem_restart_control_init(void)
+{
+	int ret;
+
+	ret = his_register_sysfs_attr(&dev_attr_modem_restart.attr);
+	if (ret < 0) {
+		pr_err("Error creating modem_restart sysfs node\n");
+		return;
+	}
+
+	pr_info("%s: OK.\n", __func__);
+}
+#endif
+
 static int __init pil_mss_init(void)
 {
 	int ret;
@@ -502,6 +573,11 @@ static int __init pil_mss_init(void)
 	ret = platform_driver_register(&pil_mba_mem_driver);
 	if (!ret)
 		ret = platform_driver_register(&pil_mss_driver);
+
+#ifdef CONFIG_HISENSE_RESTART_MODEM
+      modem_restart_control_init();
+#endif
+
 	return ret;
 }
 module_init(pil_mss_init);

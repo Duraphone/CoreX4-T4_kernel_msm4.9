@@ -76,6 +76,10 @@ enum ttf_param {
 	TTF_VFLOAT,
 	TTF_CHG_TYPE,
 	TTF_CHG_STATUS,
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	TTF_TEMP,
+	TTF_DEAD_MV,
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	TTF_VALID,
 };
 
@@ -107,6 +111,10 @@ struct ttf {
 	int			iterm_delta;
 	int			period_ms;
 	s64			last_ms;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	struct wakeup_source	*ttf_ws;
+	struct power_supply	    *usb_psy;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	struct delayed_work	ttf_work;
 	int (*get_ttf_param)(void *data, enum ttf_param, int *val);
 	int (*awake_voter)(void *data, bool vote);

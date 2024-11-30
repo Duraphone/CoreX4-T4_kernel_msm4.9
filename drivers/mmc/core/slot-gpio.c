@@ -21,6 +21,22 @@
 
 #include "slot-gpio.h"
 
+#ifdef CONFIG_SD_ERR_CHECK
+#include "../card/sd_err_check.h"
+#endif/*CONFIG_SD_ERR_CHECK*/
+
+
+
+extern int sdhci_sd_poweroff_quick(struct mmc_host *mmc);
+
+/*add start: add device node for getting status of TFCard holder in factory mode */
+
+int sdcard_status_global = 0;
+/*sdcard_status_global's value is as follows:
+0: sdcard slot is not present
+1: sdcard slot is present
+                   add end */
+
 struct mmc_gpio {
 	struct gpio_desc *ro_gpio;
 	struct gpio_desc *cd_gpio;
@@ -31,17 +47,39 @@ struct mmc_gpio {
 	char cd_label[0];
 };
 
+#ifdef CONFIG_SD_ERR_CHECK
+
+extern struct gendisk *virtual_T_disk;
+extern bool sd_card_fail_in_init;
+#endif/*CONFIG_SD_ERR_CHECK*/
+
+
 static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
 	struct mmc_host *host = dev_id;
 	int present = host->ops->get_cd(host);
 
-	pr_debug("%s: cd gpio irq, gpio state %d (CARD_%s)\n",
+	printk(KERN_ERR "%s: cd gpio irq, gpio state %d (CARD_%s)\n",
 		mmc_hostname(host), present, present?"INSERT":"REMOVAL");
-
+/*add start: add device node for getting status of TFCard holder in factory mode */
+	sdcard_status_global = mmc_gpio_get_cd(host);
+	printk(KERN_ERR "sdcard status:%d \n", sdcard_status_global);
+/*add end */
+#ifdef CONFIG_SD_ERR_CHECK
+	if ((sdcard_status_global == 0) && (sd_card_fail_in_init == true)) {
+		sd_card_fail_in_init = false;
+		sd_err_status_report(virtual_T_disk, SD_PLUG_OUT);
+	}
 	host->trigger_card_event = true;
-	mmc_detect_change(host, msecs_to_jiffies(200));
+#endif/*CONFIG_SD_ERR_CHECK*/
+	if (sdcard_status_global == 1)
+		mmc_detect_change(host, msecs_to_jiffies(500));
+	else{
+		if (sdhci_sd_poweroff_quick(host))
+			printk(KERN_ERR "L11 power off failed!\n");
+		mmc_detect_change(host, msecs_to_jiffies(200));
+	}
 
 	return IRQ_HANDLED;
 }
@@ -268,6 +306,15 @@ int mmc_gpio_request_cd(struct mmc_host *host, unsigned int gpio,
 	ctx->override_cd_active_level = true;
 	ctx->cd_gpio = gpio_to_desc(gpio);
 
+/*add start: add device node for getting status of TFCard holder in factory mode */
+	sdcard_status_global = mmc_gpio_get_cd(host);
+/*add end*/
+	if (host->index == 1) {
+		if (sdcard_status_global == 0) {
+			if (sdhci_sd_poweroff_quick(host))
+				printk(KERN_ERR "L11 power off failed!\n");
+		}
+	}
 	return 0;
 }
 EXPORT_SYMBOL(mmc_gpio_request_cd);

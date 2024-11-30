@@ -95,6 +95,7 @@ static ssize_t last_suspend_time_show(struct kobject *kobj,
 static struct kobj_attribute resume_reason = __ATTR_RO(last_resume_reason);
 static struct kobj_attribute suspend_time = __ATTR_RO(last_suspend_time);
 
+
 static struct attribute *attrs[] = {
 	&resume_reason.attr,
 	&suspend_time.attr,

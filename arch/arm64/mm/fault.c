@@ -196,6 +196,9 @@ static bool is_el1_instruction_abort(unsigned int esr)
 static void __do_kernel_fault(unsigned long addr, unsigned int esr,
 			      struct pt_regs *regs)
 {
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	char err_log[128] = {0};
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 	/*
 	 * Are we prepared to handle this kernel fault?
 	 * We are almost certainly not prepared to handle instruction faults.
@@ -210,6 +213,13 @@ static void __do_kernel_fault(unsigned long addr, unsigned int esr,
 	pr_alert("Unable to handle kernel %s at virtual address %08lx\n",
 		 (addr < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", addr);
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	snprintf(err_log, sizeof(err_log),
+		"Unable to handle kernel %s at virtual address %08lx",
+		(addr < PAGE_SIZE) ? "NULL pointer dereference" :
+		"paging request", addr);
+	subsystem_report("kernel", err_log, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 	show_pte(addr);
 	die("Oops", regs, esr);
@@ -638,12 +648,21 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 {
 	const struct fault_info *inf = esr_to_fault_info(esr);
 	struct siginfo info;
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	char err_log[128] = {0};
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 	if (!inf->fn(addr, esr, regs))
 		return;
 
 	pr_alert("Unhandled fault: %s (0x%08x) at 0x%016lx\n",
 		 inf->name, esr, addr);
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	snprintf(err_log, sizeof(err_log),
+			"Unhandled fault: %s (0x%08x) at 0x%016lx",
+			inf->name, esr, addr);
+	subsystem_report("kernel", err_log, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
@@ -742,6 +761,9 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 	unsigned long pc = instruction_pointer(regs);
 	struct siginfo info;
 	int rv;
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	char err_log[128] = {0};
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 	/*
 	 * Tell lockdep we disabled irqs in entry.S. Do nothing if they were
@@ -758,6 +780,12 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 	} else {
 		pr_alert("Unhandled debug exception: %s (0x%08x) at 0x%016lx\n",
 			 inf->name, esr, pc);
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+		snprintf(err_log, sizeof(err_log),
+				"Unhandled debug exception: %s (0x%08x) at 0x%016lx",
+				inf->name, esr, pc);
+		subsystem_report("kernel", err_log, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 		info.si_signo = inf->sig;
 		info.si_errno = 0;

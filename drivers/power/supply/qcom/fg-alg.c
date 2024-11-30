@@ -185,7 +185,7 @@ void cycle_count_update(struct cycle_counter *counter, int batt_soc,
 		}
 	}
 
-	pr_debug("batt_soc: %d id: %d chg_status: %d\n", batt_soc, id,
+	pr_err("batt_soc: %d id: %d chg_status: %d\n", batt_soc, id,
 		charge_status);
 	mutex_unlock(&counter->lock);
 }
@@ -341,7 +341,7 @@ static void cap_learning_post_process(struct cap_learning *cl)
 				cl->dt.max_cap_limit);
 		max_inc_val = div64_u64(max_inc_val, 1000);
 		if (cl->final_cap_uah > max_inc_val) {
-			pr_debug("learning capacity %lld goes above max limit %lld\n",
+			pr_err("learning capacity %lld goes above max limit %lld\n",
 				cl->final_cap_uah, max_inc_val);
 			cl->learned_cap_uah = max_inc_val;
 		}
@@ -352,7 +352,7 @@ static void cap_learning_post_process(struct cap_learning *cl)
 				cl->dt.min_cap_limit);
 		min_dec_val = div64_u64(min_dec_val, 1000);
 		if (cl->final_cap_uah < min_dec_val) {
-			pr_debug("learning capacity %lld goes below min limit %lld\n",
+			pr_err("learning capacity %lld goes below min limit %lld\n",
 				cl->final_cap_uah, min_dec_val);
 			cl->learned_cap_uah = min_dec_val;
 		}
@@ -364,7 +364,7 @@ static void cap_learning_post_process(struct cap_learning *cl)
 			pr_err("Error in storing learned_cap_uah, rc=%d\n", rc);
 	}
 
-	pr_debug("final cap_uah = %lld, learned capacity %lld -> %lld uah\n",
+	pr_err("final cap_uah = %lld, learned capacity %lld -> %lld uah\n",
 		cl->final_cap_uah, old_cap, cl->learned_cap_uah);
 }
 
@@ -400,7 +400,7 @@ static int cap_learning_process_full_data(struct cap_learning *cl)
 	delta_cap_uah = div64_s64(cl->learned_cap_uah * cc_soc_delta_centi_pct,
 				 10000);
 	cl->final_cap_uah = cl->init_cap_uah + delta_cap_uah;
-	pr_debug("Current cc_soc=%d cc_soc_delta_centi_pct=%d total_cap_uah=%lld\n",
+	pr_err("Current cc_soc=%d cc_soc_delta_centi_pct=%d total_cap_uah=%lld\n",
 		cc_soc_sw, cc_soc_delta_centi_pct, cl->final_cap_uah);
 	return 0;
 }
@@ -451,7 +451,7 @@ static int cap_learning_begin(struct cap_learning *cl, u32 batt_soc)
 	}
 
 	cl->init_cc_soc_sw = cc_soc_sw;
-	pr_debug("Capacity learning started @ battery SOC %d init_cc_soc_sw:%d\n",
+	pr_err("Capacity learning started @ battery SOC %d init_cc_soc_sw:%d\n",
 		batt_soc_msb, cl->init_cc_soc_sw);
 out:
 	return rc;
@@ -523,7 +523,7 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 	}
 
 	batt_soc_msb = (u32)batt_soc >> 24;
-	pr_debug("Charge_status: %d active: %d batt_soc: %d\n",
+	pr_err("Charge_status: %d active: %d batt_soc: %d\n",
 		charge_status, cl->active, batt_soc_msb);
 
 	/* Initialize the starting point of learning capacity */
@@ -549,7 +549,7 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 
 		if (charge_status == POWER_SUPPLY_STATUS_DISCHARGING) {
 			if (!input_present) {
-				pr_debug("Capacity learning aborted @ battery SOC %d\n",
+				pr_err("Capacity learning aborted @ battery SOC %d\n",
 					 batt_soc_msb);
 				cl->active = false;
 				cl->init_cap_uah = 0;
@@ -566,7 +566,7 @@ void cap_learning_update(struct cap_learning *cl, int batt_temp,
 				 * intermittently.
 				 */
 			} else {
-				pr_debug("Capacity learning aborted @ battery SOC %d\n",
+				pr_err("Capacity learning aborted @ battery SOC %d\n",
 					batt_soc_msb);
 				cl->active = false;
 				cl->init_cap_uah = 0;
@@ -654,7 +654,7 @@ int cap_learning_post_profile_init(struct cap_learning *cl, int64_t nom_cap_uah)
 		 * the nominal capacity.
 		 */
 		if (cl->nom_cap_uah && delta_cap_uah > pct_nom_cap_uah) {
-			pr_debug("learned_cap_uah: %lld is higher than expected, capping it to nominal: %lld\n",
+			pr_err("learned_cap_uah: %lld is higher than expected, capping it to nominal: %lld\n",
 				cl->learned_cap_uah, cl->nom_cap_uah);
 			cl->learned_cap_uah = cl->nom_cap_uah;
 		}
@@ -1050,6 +1050,18 @@ int ttf_get_time_to_full(struct ttf *ttf, int *val)
 	return rc;
 }
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+#define BATT_DEAD_COUNT		3
+bool vbat_is_dead;
+static bool is_usb_available(struct ttf *ttf)
+{
+	if (!ttf->usb_psy)
+		ttf->usb_psy = power_supply_get_by_name("usb");
+	if (!ttf->usb_psy)
+		return false;
+	return true;
+}
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static void ttf_work(struct work_struct *work)
 {
 	struct ttf *ttf = container_of(work,
@@ -1057,6 +1069,12 @@ static void ttf_work(struct work_struct *work)
 	int rc, ibatt_now, vbatt_now, ttf_now, charge_status;
 	int valid = 0;
 	ktime_t ktime_now;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	static int vbat_dead_count;
+	static int dead_wake_flag;
+	int msoc = 0,  batt_temp = 0, rbatt = 0, empty_volt_mv = 0,vbus = 0,charge_type = 0;
+	union power_supply_propval prop = {0, };
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	mutex_lock(&ttf->lock);
 	rc = ttf->get_ttf_param(ttf->data, TTF_VALID, &valid);
@@ -1073,9 +1091,11 @@ static void ttf_work(struct work_struct *work)
 		pr_err("failed to get charge_status rc=%d\n", rc);
 		goto end_work;
 	}
+#ifndef CONFIG_HISENSE_CHARGE_FG_FUNCTION
 	if (charge_status != POWER_SUPPLY_STATUS_CHARGING &&
 			charge_status != POWER_SUPPLY_STATUS_DISCHARGING)
 		goto end_work;
+#endif /* CONFIG_HISENSE_CHARGE_FG_FUNCTION */
 
 	rc =  ttf->get_ttf_param(ttf->data, TTF_IBAT, &ibatt_now);
 	if (rc < 0) {
@@ -1117,6 +1137,53 @@ static void ttf_work(struct work_struct *work)
 			ttf->last_ms = ktime_to_ms(ktime_now);
 		}
 	}
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	if (is_usb_available(ttf)) {
+			prop.intval = 0;
+			power_supply_get_property(ttf->usb_psy,
+					POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
+			vbus = prop.intval;
+			power_supply_get_property(ttf->usb_psy,
+					POWER_SUPPLY_PROP_REAL_TYPE, &prop);
+			charge_type = prop.intval;
+	}
+	rc = ttf->get_ttf_param(ttf->data, TTF_MSOC, &msoc);
+	if (rc < 0) {
+		pr_err("Error in getting capacity, rc=%d\n", rc);
+	}
+	rc = ttf->get_ttf_param(ttf->data, TTF_TEMP, &batt_temp);
+	if (rc < 0) {
+		pr_err("Error in getting temp, rc=%d\n", rc);
+	}
+	rc = ttf->get_ttf_param(ttf->data, TTF_RBATT, &rbatt);
+	if (rc < 0) {
+		pr_err("Error in getting rbatt, rc=%d\n", rc);
+	}
+	rc = ttf->get_ttf_param(ttf->data, TTF_DEAD_MV, &empty_volt_mv);
+	if (rc < 0) {
+		pr_err("Error in getting empty_mv, rc=%d\n", rc);
+	}
+	pr_err("vbus=%d, charge_type=%d, ibatt_now=%d, vbatt_now=%d, capacity=%d, temp=%d, charge_status=%d, rbatt=%d\n",
+		vbus, charge_type, ibatt_now, vbatt_now, msoc, batt_temp, charge_status, rbatt);
+	if (vbatt_now <= (empty_volt_mv * 1000)) {
+		if (!dead_wake_flag) {
+			dead_wake_flag = true;
+			__pm_stay_awake(ttf->ttf_ws);
+		}
+		vbat_dead_count++;
+		pr_err("bat is becoming dead %d count %d\n",vbatt_now, vbat_dead_count);
+		if (vbat_dead_count >= BATT_DEAD_COUNT) {
+			vbat_is_dead = true;
+		}
+	} else {
+		vbat_dead_count = 0;
+		vbat_is_dead = false;
+		if (dead_wake_flag) {
+			dead_wake_flag = false;
+			__pm_relax(ttf->ttf_ws);
+		}
+	}
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	/* recurse every 10 seconds */
 	schedule_delayed_work(&ttf->ttf_work, msecs_to_jiffies(ttf->period_ms));
@@ -1258,7 +1325,9 @@ int ttf_tte_init(struct ttf *ttf)
 		pr_err("Insufficient functions for supporting ttf\n");
 		return -EINVAL;
 	}
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	ttf->ttf_ws = wakeup_source_register("qcom-fg-alg");
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	if (!ttf->iterm_delta)
 		ttf->iterm_delta = DEFAULT_TTF_ITERM_DELTA_MA;
 	if (!ttf->period_ms)

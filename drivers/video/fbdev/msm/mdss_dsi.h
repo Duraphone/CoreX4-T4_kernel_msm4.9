@@ -99,6 +99,7 @@ enum dsi_panel_bl_ctrl {
 	BL_PWM,
 	BL_WLED,
 	BL_DCS_CMD,
+	BL_I2C,
 	UNKNOWN_CTRL,
 };
 
@@ -338,6 +339,15 @@ struct dsi_panel_cmds {
 	int link_state;
 };
 
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+struct spi_panel_cmds {
+	char *buf;
+	int blen;
+	struct spi_cmd_desc *cmds;
+	int cmd_cnt;
+};
+#endif
+
 struct dsi_panel_timing {
 	struct mdss_panel_timing timing;
 	uint32_t phy_timing[12];
@@ -349,6 +359,9 @@ struct dsi_panel_timing {
 	struct dsi_panel_cmds on_cmds;
 	struct dsi_panel_cmds post_panel_on_cmds;
 	struct dsi_panel_cmds switch_cmds;
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	struct spi_panel_cmds spi_on_cmds;
+#endif
 };
 
 struct dsi_kickoff_action {
@@ -444,7 +457,21 @@ struct mdss_dsi_ctrl_pdata {
 	bool bklt_en_gpio_invert;
 	int lcd_mode_sel_gpio;
 	int bklt_ctrl;	/* backlight ctrl */
+	/* hisense add */
+	int epd_xon;
+	int epd_power_on;
+	int dsi2dpi_vdcc_en;
+	int epd_i2c_en;
+	int vdd_en;
 	enum dsi_ctrl_op_mode bklt_dcs_op_mode; /* backlight dcs ctrl mode */
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	int icn_reset_gpio;
+	int icn_vdcen_gpio;
+	int spi_clk_gpio;
+	int spi_cs_gpio;
+	int spi_mosi_gpio;
+	struct spi_panel_cmds spi_on_cmds;
+#endif
 	bool pwm_pmi;
 	int pwm_period;
 	int pwm_pmic_gpio;

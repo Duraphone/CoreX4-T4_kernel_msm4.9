@@ -71,6 +71,9 @@
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
 #include "internal.h"
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+#include <linux/unmovable_isolate.h>
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
@@ -239,6 +242,10 @@ char * const migratetype_names[MIGRATE_TYPES] = {
 	"CMA",
 #endif
 	"HighAtomic",
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	"Unmovable_isolate1",
+	"Unmovable_isolate2",
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #ifdef CONFIG_MEMORY_ISOLATION
 	"Isolate",
 #endif
@@ -1159,8 +1166,15 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			/* MIGRATE_ISOLATE page should not go to pcplists */
 			VM_BUG_ON_PAGE(is_migrate_isolate(mt), page);
 			/* Pageblock could have been isolated meanwhile */
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+			if (unlikely(isolated_pageblocks) ||
+			   ((is_unmovable_isolate1(mt) || is_unmovable_isolate2(mt)) &&
+			     unmovable_isolate_disabled))
+				mt = get_pageblock_migratetype(page);
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 			if (unlikely(isolated_pageblocks))
 				mt = get_pageblock_migratetype(page);
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 			if (bulkfree_pcp_prepare(page))
 				continue;
@@ -1845,6 +1859,10 @@ static int fallbacks[MIGRATE_TYPES][4] = {
 #ifdef CONFIG_CMA
 	[MIGRATE_CMA]         = { MIGRATE_TYPES }, /* Never used */
 #endif
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	[MIGRATE_UNMOVABLE_ISOLATE1] = { MIGRATE_TYPES }, /* Never used */
+	[MIGRATE_UNMOVABLE_ISOLATE2] = { MIGRATE_TYPES }, /* Never used */
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #ifdef CONFIG_MEMORY_ISOLATION
 	[MIGRATE_ISOLATE]     = { MIGRATE_TYPES }, /* Never used */
 #endif
@@ -2069,12 +2087,22 @@ static void reserve_highatomic_pageblock(struct page *page, struct zone *zone,
 
 	/* Yoink! */
 	mt = get_pageblock_migratetype(page);
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	if (mt != MIGRATE_HIGHATOMIC &&
+			!is_migrate_isolate(mt) && !is_migrate_cma(mt) &&
+			!is_unmovable_isolate1(mt) && !is_unmovable_isolate2(mt)) {
+		zone->nr_reserved_highatomic += pageblock_nr_pages;
+		set_pageblock_migratetype(page, MIGRATE_HIGHATOMIC);
+		move_freepages_block(zone, page, MIGRATE_HIGHATOMIC);
+	}
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	if (mt != MIGRATE_HIGHATOMIC &&
 			!is_migrate_isolate(mt) && !is_migrate_cma(mt)) {
 		zone->nr_reserved_highatomic += pageblock_nr_pages;
 		set_pageblock_migratetype(page, MIGRATE_HIGHATOMIC);
 		move_freepages_block(zone, page, MIGRATE_HIGHATOMIC);
 	}
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 out_unlock:
 	spin_unlock_irqrestore(&zone->lock, flags);
@@ -2221,13 +2249,36 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
 				int migratetype)
 {
-	struct page *page;
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	struct page *page = NULL;
+	int unmovable_isolate_enable;
 
+	unmovable_isolate_enable = unmovable_isolate_enabled(zone);
+	if (unmovable_isolate_enable && (migratetype == MIGRATE_UNMOVABLE)) {
+		if (valid_order_for_ui(order, MIGRATE_UNMOVABLE_ISOLATE1))
+			page = __rmqueue_smallest(zone, order, MIGRATE_UNMOVABLE_ISOLATE1);
+		else if (valid_order_for_ui(order, MIGRATE_UNMOVABLE_ISOLATE2))
+			page = __rmqueue_smallest(zone, order, MIGRATE_UNMOVABLE_ISOLATE2);
+	}
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
+	struct page *page;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
+
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	if (unlikely(!page))
+		page = __rmqueue_smallest(zone, order, migratetype);
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	page = __rmqueue_smallest(zone, order, migratetype);
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	if (unlikely(!page)) {
 		page = __rmqueue_fallback(zone, order, migratetype);
 	}
 
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	/* order-0 fallback */
+	if (!page && (order == 0) && unmovable_isolate_enable)
+		page = __rmqueue_smallest(zone, order, MIGRATE_UNMOVABLE_ISOLATE1);
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	trace_mm_page_alloc_zone_locked(page, order, migratetype);
 	return page;
 }
@@ -2259,6 +2310,9 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			int migratetype, bool cold)
 {
 	int i, alloced = 0;
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	int page_migratetype;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
@@ -2294,9 +2348,22 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			list_add_tail(&page->lru, list);
 		list = &page->lru;
 		alloced++;
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		page_migratetype = get_pcppage_migratetype(page);
+		if (is_migrate_cma(page_migratetype))
+			__mod_zone_page_state(zone, NR_FREE_CMA_PAGES,
+					      -(1 << order));
+		else if (is_unmovable_isolate1(page_migratetype))
+			__mod_zone_page_state(zone, NR_FREE_UNMOVABLE_ISOLATE1_PAGES,
+					      -(1 << order));
+		else if (is_unmovable_isolate2(page_migratetype))
+			__mod_zone_page_state(zone, NR_FREE_UNMOVABLE_ISOLATE2_PAGES,
+					      -(1 << order));
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		if (is_migrate_cma(get_pcppage_migratetype(page)))
 			__mod_zone_page_state(zone, NR_FREE_CMA_PAGES,
 					      -(1 << order));
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	}
 
 	/*
@@ -2540,7 +2607,16 @@ void free_hot_cold_page(struct page *page, bool cold)
 			free_one_page(zone, page, pfn, 0, migratetype);
 			goto out;
 		}
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		/* Free unmovable-isolate pages back to Unmovable pcp list */
+		if (is_unmovable_isolate1(migratetype) ||
+		    is_unmovable_isolate2(migratetype))
+			migratetype = MIGRATE_UNMOVABLE;
+		else
+			migratetype = MIGRATE_MOVABLE;
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		migratetype = MIGRATE_MOVABLE;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	}
 
 	pcp = &this_cpu_ptr(zone->pageset)->pcp;
@@ -2879,6 +2955,19 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	if (!(alloc_flags & ALLOC_CMA))
 		free_pages -= zone_page_state(z, NR_FREE_CMA_PAGES);
 #endif
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	/* If allocation can't use UNMOVABLE_ISOLATE areas don't use free unmovable isolate pages */
+	if (unmovable_isolate_enabled(z)) {
+		if (!valid_order_for_ui(order,MIGRATE_UNMOVABLE_ISOLATE1))
+			free_pages -=
+					zone_page_state(z, NR_FREE_UNMOVABLE_ISOLATE1_PAGES);
+
+		if (!((alloc_flags & ALLOC_UNMOVABLE) &&
+		    (valid_order_for_ui(order,MIGRATE_UNMOVABLE_ISOLATE2))))
+			free_pages -=
+					zone_page_state(z, NR_FREE_UNMOVABLE_ISOLATE2_PAGES);
+	}
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 	/*
 	 * Check watermarks for an order-0 allocation request. If these
@@ -2919,6 +3008,20 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 			return true;
 		}
 #endif
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		if(unmovable_isolate_enabled(z))
+		{
+			if (valid_order_for_ui(order,MIGRATE_UNMOVABLE_ISOLATE1) &&
+				!list_empty(&area->free_list[MIGRATE_UNMOVABLE_ISOLATE1])) {
+				return true;
+			}
+
+			if ((alloc_flags & ALLOC_UNMOVABLE) && valid_order_for_ui(order,MIGRATE_UNMOVABLE_ISOLATE2) &&
+				!list_empty(&area->free_list[MIGRATE_UNMOVABLE_ISOLATE2])) {
+				return true;
+			}
+		}
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		if (alloc_harder &&
 			!list_empty(&area->free_list[MIGRATE_HIGHATOMIC]))
 			return true;
@@ -2995,6 +3098,10 @@ get_page_from_freelist(gfp_t gfp_mask, unsigned int order, int alloc_flags,
 	struct zoneref *z = ac->preferred_zoneref;
 	struct zone *zone;
 	struct pglist_data *last_pgdat_dirty_limit = NULL;
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	if (ac->migratetype == MIGRATE_UNMOVABLE)
+		alloc_flags |= ALLOC_UNMOVABLE;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 	/*
 	 * Scan zonelist, looking for a zone with enough free.
@@ -4064,11 +4171,19 @@ static struct page *__page_frag_refill(struct page_frag_cache *nc,
 				       gfp_t gfp_mask)
 {
 	struct page *page = NULL;
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	gfp_t gfp = gfp_mask | __GFP_DMA;
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	gfp_t gfp = gfp_mask;
-
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #if (PAGE_SIZE < PAGE_FRAG_CACHE_MAX_SIZE)
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	gfp_mask |= __GFP_COMP | __GFP_NOWARN | __GFP_NORETRY |
+		    __GFP_NOMEMALLOC | __GFP_DMA;
+#else /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	gfp_mask |= __GFP_COMP | __GFP_NOWARN | __GFP_NORETRY |
 		    __GFP_NOMEMALLOC;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	page = alloc_pages_node(NUMA_NO_NODE, gfp_mask,
 				PAGE_FRAG_CACHE_MAX_ORDER);
 	nc->size = page ? PAGE_FRAG_CACHE_MAX_SIZE : PAGE_SIZE;
@@ -4410,6 +4525,10 @@ static void show_migration_types(unsigned char type)
 #ifdef CONFIG_CMA
 		[MIGRATE_CMA]		= 'C',
 #endif
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		[MIGRATE_UNMOVABLE_ISOLATE1]	= '1',
+		[MIGRATE_UNMOVABLE_ISOLATE2]	= '2',
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #ifdef CONFIG_MEMORY_ISOLATION
 		[MIGRATE_ISOLATE]	= 'I',
 #endif
@@ -4456,6 +4575,9 @@ void show_free_areas(unsigned int filter)
 		" unevictable:%lu dirty:%lu writeback:%lu unstable:%lu\n"
 		" slab_reclaimable:%lu slab_unreclaimable:%lu\n"
 		" mapped:%lu shmem:%lu pagetables:%lu bounce:%lu\n"
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		" free_unmovable_isolate1:%lu free_unmovable_isolate2:%lu\n"
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		" free:%lu free_pcp:%lu free_cma:%lu\n",
 		global_node_page_state(NR_ACTIVE_ANON),
 		global_node_page_state(NR_INACTIVE_ANON),
@@ -4473,6 +4595,10 @@ void show_free_areas(unsigned int filter)
 		global_node_page_state(NR_SHMEM),
 		global_page_state(NR_PAGETABLE),
 		global_page_state(NR_BOUNCE),
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		global_page_state(NR_FREE_UNMOVABLE_ISOLATE1_PAGES),
+		global_page_state(NR_FREE_UNMOVABLE_ISOLATE2_PAGES),
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		global_page_state(NR_FREE_PAGES),
 		free_pcp,
 		global_page_state(NR_FREE_CMA_PAGES));
@@ -4556,6 +4682,10 @@ void show_free_areas(unsigned int filter)
 			" bounce:%lukB"
 			" free_pcp:%lukB"
 			" local_pcp:%ukB"
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+			" free_unmovable_isolate1:%lukB"
+			" free_unmovable_isolate2:%lukB"
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 			" free_cma:%lukB"
 			"\n",
 			zone->name,
@@ -4579,6 +4709,10 @@ void show_free_areas(unsigned int filter)
 			K(zone_page_state(zone, NR_BOUNCE)),
 			K(free_pcp),
 			K(this_cpu_read(zone->pageset->pcp.count)),
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+			K(zone_page_state(zone, NR_FREE_UNMOVABLE_ISOLATE1_PAGES)),
+			K(zone_page_state(zone, NR_FREE_UNMOVABLE_ISOLATE2_PAGES)),
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 			K(zone_page_state(zone, NR_FREE_CMA_PAGES)));
 		printk("lowmem_reserve[]:");
 		for (i = 0; i < MAX_NR_ZONES; i++)
@@ -6863,6 +6997,12 @@ static void __setup_per_zone_wmarks(void)
 		zone->watermark[WMARK_HIGH] = min_wmark_pages(zone) +
 					low + min * 2;
 
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+		setup_zone_migrate_unmovable_isolate(zone, MIGRATE_UNMOVABLE_ISOLATE1,
+			unmovable_isolate_disabled);
+		setup_zone_migrate_unmovable_isolate(zone, MIGRATE_UNMOVABLE_ISOLATE2,
+			unmovable_isolate_disabled);
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 		spin_unlock_irqrestore(&zone->lock, flags);
 	}
 
@@ -7091,6 +7231,26 @@ out:
 	mutex_unlock(&pcp_batch_high_lock);
 	return ret;
 }
+
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+int unmovable_isolate_disabled_sysctl_handler(struct ctl_table *table, int write,
+	void __user *buffer, size_t *length, loff_t *ppos)
+{
+	struct zone* zone;
+	int ret;
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (!write || ret < 0)
+		return ret;
+
+	for_each_zone(zone) {
+		setup_zone_migrate_unmovable_isolate(zone, MIGRATE_UNMOVABLE_ISOLATE1,
+			unmovable_isolate_disabled);
+		setup_zone_migrate_unmovable_isolate(zone, MIGRATE_UNMOVABLE_ISOLATE2,
+			unmovable_isolate_disabled);
+	}
+	return ret;
+}
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 #ifdef CONFIG_NUMA
 int hashdist = HASHDIST_DEFAULT;

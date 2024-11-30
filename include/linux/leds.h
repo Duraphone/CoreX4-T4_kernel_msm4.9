@@ -27,7 +27,17 @@ struct device;
 
 enum led_brightness {
 	LED_OFF		= 0,
+	LED_TORCH1	   = 31,	/* his : as camera flashlight */
+	LED_TORCH2	   = 32,	/* his : as camera flashlight */
+	LED_TORCH3	   = 33,	/* his : as camera flashlight */
+	LED_TORCH4	   = 34,	/* his : as camera flashlight */
+	LED_TORCH5	   = 35,	/* add by hisense for 762 =100ma */
+	LED_TORCH6	   = 36,	/* add by hisense for 762 =50ma */
+	LED_FLASH1	   = 63,	/* his : as camera flashlight */
+	LED_FLASH2	   = 64,	/* his : as camera flashlight */
+	LED_FULL_FLASH	= 90,	/* his : as camera flashlight */
 	LED_HALF	= 127,
+	LED_CAM_DISABLE = 128, /* his : as camera flashlight */
 	LED_FULL	= 255,
 };
 

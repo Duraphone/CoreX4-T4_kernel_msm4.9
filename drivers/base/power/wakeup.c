@@ -19,6 +19,9 @@
 #include <trace/events/power.h>
 #include <linux/irq.h>
 #include <linux/irqdesc.h>
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+#include <linux/awaken_sys_event.h>
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 
 #include "power.h"
 
@@ -911,6 +914,9 @@ EXPORT_SYMBOL_GPL(pm_system_wakeup);
 
 void pm_wakeup_clear(void)
 {
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+	clear_awaken_system_event();
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 	pm_abort_suspend = false;
 	pm_wakeup_irq = 0;
 }
@@ -925,12 +931,15 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 			desc = irq_to_desc(irq_number);
 			if (desc == NULL)
 				name = "stray irq";
-			else if (desc->action && desc->action->name)
+			else if (desc->action && desc->action->name) {
 				name = desc->action->name;
-
+			}
 			pr_warn("%s: %d triggered %s\n", __func__,
 					irq_number, name);
 
+#ifdef CONFIG_SAVE_AWAKEN_EVENT
+			set_awaken_event_by_irqnum(irq_number);
+#endif /* CONFIG_SAVE_AWAKEN_EVENT */
 		}
 		pm_wakeup_irq = irq_number;
 		pm_system_wakeup();

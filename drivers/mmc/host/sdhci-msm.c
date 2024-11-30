@@ -732,6 +732,7 @@ static int msm_init_cm_dll(struct sdhci_host *host,
 	unsigned long flags;
 	u32 wait_cnt;
 	bool prev_pwrsave, curr_pwrsave;
+	u32 reg = 0;
 
 	pr_debug("%s: Enter %s\n", mmc_hostname(mmc), __func__);
 	spin_lock_irqsave(&host->lock, flags);
@@ -900,7 +901,7 @@ static int msm_init_cm_dll(struct sdhci_host *host,
 out:
 	/* Restore the correct PWRSAVE state */
 	if (prev_pwrsave ^ curr_pwrsave) {
-		u32 reg = readl_relaxed(host->ioaddr +
+		reg = readl_relaxed(host->ioaddr +
 			msm_host_offset->CORE_VENDOR_SPEC);
 
 		if (prev_pwrsave)
@@ -910,6 +911,12 @@ out:
 
 		writel_relaxed(reg, host->ioaddr +
 			msm_host_offset->CORE_VENDOR_SPEC);
+	}
+	if(!strcmp(mmc_hostname(mmc),"mmc1")){
+		reg = readl_relaxed(host->ioaddr +
+			msm_host_offset->CORE_VENDOR_SPEC);
+		reg &= ~CORE_CLK_PWRSAVE;
+		writel_relaxed(reg, host->ioaddr + msm_host_offset->CORE_VENDOR_SPEC);	
 	}
 
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -2638,6 +2645,34 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 		}
 	}
 out:
+	return ret;
+}
+
+
+
+int sdhci_sd_poweroff_quick(struct mmc_host *mmc)
+{    
+	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_reg_data *vreg_table[2];
+	int ret = 0,i;
+	/*if already power off, do nothing */
+	if((MMC_POWER_OFF == mmc->ios.power_mode)){
+		return ret;
+	}
+	
+	vreg_table[0] = msm_host->pdata->vreg_data->vdd_data;
+	vreg_table[1] = msm_host->pdata->vreg_data->vdd_io_data;
+	
+	for (i = 0; i < ARRAY_SIZE(vreg_table); i++) {
+		if (vreg_table[i]) {
+			ret = sdhci_msm_vreg_disable(vreg_table[i]);
+			if (ret)
+				printk(KERN_ERR"i %d,disble verg failed\n",i);
+		}
+	}
+
 	return ret;
 }
 

@@ -287,7 +287,11 @@ struct msm_fb_data_type {
 	u32 idle_state;
 	struct msm_fb_fps_info fps_info;
 	struct delayed_work idle_notify_work;
-
+	/* hmct add  for dynamic fps*/
+	struct delayed_work force_fps_work;
+	/* hisense add */
+	struct delayed_work bkl_work;
+	int force_fps_t;
 	bool atomic_commit_pending;
 
 	int op_enable;

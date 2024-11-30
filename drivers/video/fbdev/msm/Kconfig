@@ -144,4 +144,14 @@ config FB_MSM_MDSS_FRC_DEBUG
 	statistics and check whether its output pattern matches expected
 	cadence.
 
+config BL_I2C
+	depends on FB_MSM_MDSS
+	bool "for lcd panel bl power"
+	---help---
+	config lcd panel bl  power IC ktd3137 in kernel
+config BL_I2C_CURRENT_SET
+	depends on BL_I2C
+	bool "for lcd panel bl current"
+	---help---
+	config lcd panel bl current IC ktd3137 in kernel	
 endif

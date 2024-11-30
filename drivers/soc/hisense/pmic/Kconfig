@@ -1,0 +1,38 @@
+config COMP_MULTI_PROFILE
+	bool "multi profile load depend on batt_id"
+	depends on OF_BATTERYDATA && MACH_HISENSE_SMARTPHONE
+	default n
+	help
+	 y to use batt id select battery profile.
+	 n not using batt id select battery profile.
+	 
+config HISENSE_CHARGE_FG_FUNCTION
+	bool "Add the hisense charge/fg driver"
+	depends on MACH_HISENSE_SMARTPHONE
+	default n
+	help
+	  Add the hisense charge function.Such as smb-charger,fg and so on.
+
+config HISENSE_CHARGER_MODE_DET
+  bool "zc and typec charger mode detection"
+  default n
+  help
+    ay Y to enable Hisense charger mode detection
+
+config HISENSE_PARALLEL_CHARGER
+  bool "paraller charger mode function"
+  default n
+  help
+    ay Y to enable Hisense prraller charger mode
+
+config HS_GET_CAPACITY_DELAY
+  bool "HS_GET_CAPACITY_DELAY"
+  default n
+  help
+    ay Y delay to get capacity
+	
+config HISENSE_NO_BATTERY_DETECT
+  bool "HISENSE_NO_BATTERY_DETECT"
+  default n
+  help
+    ay Y detect no battery by thermal

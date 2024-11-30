@@ -30,6 +30,7 @@
 
 #include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
 #include <asm/page.h>
+#include <linux/his_debug_base.h>
 
 #include "of_private.h"
 
@@ -1059,6 +1060,7 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
 		    (unsigned long long)size);
 
+		dev_bi.ddr_size += size;
 		early_init_dt_add_memory_arch(base, size);
 	}
 

@@ -1227,6 +1227,10 @@ struct snd_soc_card {
 	struct snd_soc_dapm_context dapm;
 	struct snd_soc_dapm_stats dapm_stats;
 	struct snd_soc_dapm_update *update;
+	
+//#ifdef CONFIG_AUDIO_FM_LNA_EN
+	struct regulator *vdd_fm_lna;
+//#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_card_root;
@@ -1729,6 +1733,10 @@ int snd_soc_register_dai(struct snd_soc_component *component,
 
 struct snd_soc_dai *snd_soc_find_dai(
 	const struct snd_soc_dai_link_component *dlc);
+
+//#ifdef CONFIG_AUDIO_FM_LNA_EN
+int msm8x16_fm_lna_power_switch(struct snd_soc_card *card, bool on);
+//#endif
 
 #include <sound/soc-dai.h>
 

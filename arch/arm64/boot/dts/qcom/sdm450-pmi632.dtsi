@@ -36,8 +36,8 @@
 /{
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
-		#include "qg-batterydata-ascent-3450mah.dtsi"
-		#include "qg-batterydata-mlp356477-2800mah.dtsi"
+		//#include "qg-batterydata-ascent-3450mah.dtsi"
+		//#include "qg-batterydata-mlp356477-2800mah.dtsi"
 	};
 };
 
@@ -262,6 +262,7 @@
 		thermal-governor = "step_wise";
 
 		trips {
+		   /*
 			quiet_batt_trip1: quiet_batt-trip1 {
 				temperature = <38000>;
 				hysteresis = <3000>;
@@ -277,11 +278,13 @@
 				hysteresis = <3000>;
 				type = "passive";
 			};
+			*/
 			quiet_cpus_trip: quiet_cpus-trip {
 				temperature = <43000>;
 				hysteresis = <0>;
 				type = "passive";
 			};
+			/*
 			quiet_modem_trip0: quiet_modem-trip0 {
 				temperature = <45000>;
 				hysteresis = <2000>;
@@ -302,6 +305,7 @@
 				hysteresis = <4000>;
 				type = "passive";
 			};
+			*/
 		};
 		cooling-maps {
 			skin_cpu0 {
@@ -337,6 +341,7 @@
 				trip = <&quiet_cpus_trip>;
 				cooling-device = <&CPU7 THERMAL_NO_LIMIT 3>;
 			};
+			/*
 			modem_lvl1 {
 				trip = <&quiet_modem_trip1>;
 				cooling-device = <&modem_pa 2 2>;
@@ -369,6 +374,7 @@
 				trip = <&quiet_batt_trip4>;
 				cooling-device = <&pmi632_charger 5 5>;
 			};
+			*/
 		};
 	};
 };

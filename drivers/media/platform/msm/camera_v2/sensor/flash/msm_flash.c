@@ -21,6 +21,11 @@
 #include "msm_camera_dt_util.h"
 #include "msm_cci.h"
 
+
+#define PUPILLIGHT_CUR1    10
+#define PUPILLIGHT_CUR2    100
+#define PUPILLIGHT_CUR5    50
+#define PUPILLIGHT_CUR6    25
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
@@ -55,6 +60,34 @@ static struct msm_camera_i2c_fn_t msm_sensor_cci_func_tbl = {
 	.i2c_util = msm_sensor_cci_i2c_util,
 	.i2c_poll =  msm_camera_cci_i2c_poll,
 };
+
+#ifdef CONFIG_HMCT_LOW_BATTERY_FLASH_CTL
+#include <linux/power_supply.h>
+#define CAP_LIMIT_FOR_FLASH		15
+
+bool check_battery_capacity_enough(void)
+{
+	union power_supply_propval prop = {0,};
+	struct power_supply *batt_psy = power_supply_get_by_name("battery");
+	const struct power_supply_desc *batt_psy_desc = batt_psy->desc;
+	int rc = 0, batt_soc = 0;
+
+	rc = batt_psy_desc->get_property(batt_psy,
+		POWER_SUPPLY_PROP_CAPACITY, &prop);
+
+	if (rc < 0)
+		pr_err("could not read battery  capacity, rc=%d\n", rc);
+	else
+		batt_soc = prop.intval;
+
+	pr_err("check_battery_capacity_enough  capacity=%d\n", batt_soc);
+
+	if (batt_soc >= CAP_LIMIT_FOR_FLASH)
+		return true;
+	else
+		return false;
+}
+#endif/*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
 
 static void msm_torch_brightness_set(struct led_classdev *led_cdev,
 				enum led_brightness value)
@@ -121,7 +154,274 @@ static int32_t msm_torch_create_classdev(struct platform_device *pdev,
 
 	return 0;
 };
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+void hmct_flash_brightness_set(struct led_classdev *led_cdev,
+    unsigned int value)
+{
+    int i = 0;
+    struct msm_flash_ctrl_t *fctrl = container_of(led_cdev,
+		struct msm_flash_ctrl_t, led_cl_dev);
+	struct msm_flash_cfg_data_t *flash_data = NULL;
+    CDBG(" E.\n");
+    pr_err(" value = %d flash_state = %d\n", value, fctrl->flash_state);
+    if (fctrl == NULL) {
+		CDBG(" fctrl == NULL. Fail!\n");
+		return;
+    }
+	if (fctrl->func_tbl == NULL) {
+		CDBG(" fctrl->func_tbl == NULL. Fail!\n");
+		return;
+    }
+	flash_data = kzalloc(sizeof(struct msm_flash_cfg_data_t),
+		GFP_KERNEL);
+	if (!flash_data) {
+		pr_err("kzalloc failed \n");
+		return;
+	}
+	/*set flash current to invalid,and default current will be set*/
+	for (i = 0; i < MAX_LED_TRIGGERS; i++) {
+		flash_data->flash_current[i] = -1;
+	}
+    if (LED_OFF == value || LED_CAM_DISABLE == value) {
+		if (fctrl->flash_state != MSM_CAMERA_FLASH_RELEASE) {
+			if (fctrl->func_tbl->camera_flash_off) {
+				fctrl->func_tbl->camera_flash_off(fctrl, flash_data);
+			}
 
+			if (fctrl->func_tbl->camera_flash_release) {
+				fctrl->func_tbl->camera_flash_release(fctrl);
+			}
+			fctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
+		}
+		CDBG(" X.\n");
+		kfree(flash_data);
+		return;
+    }
+
+	if (fctrl->flash_state != MSM_CAMERA_FLASH_INIT) {
+		if (fctrl->func_tbl->camera_flash_init) {
+			fctrl->func_tbl->camera_flash_init(fctrl, flash_data);
+	    }
+	    fctrl->flash_state = MSM_CAMERA_FLASH_INIT;
+	}
+
+	switch (value) {
+	case LED_FULL: {
+	    if (fctrl->func_tbl->camera_flash_low) {
+		    for (i = 0; i < fctrl->torch_num_sources; i++) {
+				if (fctrl->torch_op_current[i] > fctrl->torch_max_current[i]) {
+					fctrl->torch_op_current[i] = fctrl->torch_max_current[i];
+				}
+		    }
+		    fctrl->func_tbl->camera_flash_low(fctrl, flash_data);
+		}
+	    break;
+	}
+
+	case LED_FULL_FLASH: {
+	    if (fctrl->func_tbl->camera_flash_high) {
+			for (i = 0; i < fctrl->flash_num_sources; i++) {
+				if (fctrl->flash_op_current[i] > fctrl->flash_max_current[i]) {
+					fctrl->flash_op_current[i] = fctrl->flash_max_current[i];
+				}
+			}
+			fctrl->func_tbl->camera_flash_high(fctrl, flash_data);
+	    }
+	    break;
+	}
+
+	case LED_TORCH1: {
+     if(fctrl->torch_num_sources == 1){
+		 if (fctrl->func_tbl->camera_flash_low) {
+					 for (i = 0; i < fctrl->torch_num_sources; i++) {
+						 if (fctrl->torch_op_current[i] > fctrl->torch_max_current[i]) {
+							 fctrl->torch_op_current[i] = fctrl->torch_max_current[i];
+						 }
+					 }
+					 fctrl->func_tbl->camera_flash_low(fctrl, flash_data);
+				 }
+	 }else{
+#ifdef CONFIG_HMCT_DUAL_FLASH_INVERSE_CTL
+	    if (fctrl->func_tbl->camera_flash_low2) {
+			if (fctrl->torch_op_current[1] > fctrl->torch_max_current[1]) {
+				fctrl->torch_op_current[1] = fctrl->torch_max_current[1];
+			}
+			fctrl->func_tbl->camera_flash_low2(fctrl, flash_data);
+		}
+#else
+		if (fctrl->func_tbl->camera_flash_low1) {
+			if (fctrl->torch_op_current[0] > fctrl->torch_max_current[0]) {
+				fctrl->torch_op_current[0] = fctrl->torch_max_current[0];
+			}
+			fctrl->func_tbl->camera_flash_low1(fctrl, flash_data);
+		}
+#endif
+	 }
+     break;
+	}
+
+	case LED_TORCH2: {
+#ifdef CONFIG_HMCT_DUAL_FLASH_INVERSE_CTL
+		if (fctrl->func_tbl->camera_flash_low1) {
+			if (fctrl->torch_op_current[0] > fctrl->torch_max_current[0]) {
+				fctrl->torch_op_current[0] = fctrl->torch_max_current[0];
+			}
+			fctrl->func_tbl->camera_flash_low1(fctrl, flash_data);
+		}
+#else
+		if (fctrl->func_tbl->camera_flash_low2) {
+			if (fctrl->torch_op_current[1] > fctrl->torch_max_current[1]) {
+				fctrl->torch_op_current[1] = fctrl->torch_max_current[1];
+			}
+			fctrl->func_tbl->camera_flash_low2(fctrl, flash_data);
+		}
+#endif
+	break;
+	}
+
+ case LED_TORCH3:{
+            /* Turn off flash triggers */
+            for (i = 0; i < fctrl->flash_num_sources; i++)
+                if (fctrl->flash_trigger[i])
+                    led_trigger_event(fctrl->flash_trigger[i], 0);
+	            if(fctrl->torch_trigger[1])
+	            {
+		                led_trigger_event(fctrl->torch_trigger[1], PUPILLIGHT_CUR1);
+	            }
+
+            if (fctrl->switch_trigger)
+                led_trigger_event(fctrl->switch_trigger, 1);
+        }
+        break;
+
+
+case LED_TORCH4:{
+            /* Turn off flash triggers */
+            for (i = 0; i < fctrl->flash_num_sources; i++)
+                if (fctrl->flash_trigger[i])
+                    led_trigger_event(fctrl->flash_trigger[i], 0);
+	            if(fctrl->torch_trigger[1])
+	            {
+		                led_trigger_event(fctrl->torch_trigger[1], PUPILLIGHT_CUR2);
+	            }
+
+            if (fctrl->switch_trigger)
+                led_trigger_event(fctrl->switch_trigger, 1);
+        }
+        break;
+
+case LED_TORCH5:{
+            /* add by hisense for l762 =50ma */
+            for (i = 0; i < fctrl->flash_num_sources; i++)
+                if (fctrl->flash_trigger[i])
+                    led_trigger_event(fctrl->flash_trigger[i], 0);
+	            if(fctrl->torch_trigger[0])
+	            {
+		                led_trigger_event(fctrl->torch_trigger[0], PUPILLIGHT_CUR5);
+	            }
+
+            if (fctrl->switch_trigger)
+                led_trigger_event(fctrl->switch_trigger, 1);
+        }
+        break;
+		
+case LED_TORCH6:{
+            /* add by hisense for l762 =25ma */
+            for (i = 0; i < fctrl->flash_num_sources; i++)
+                if (fctrl->flash_trigger[i])
+                    led_trigger_event(fctrl->flash_trigger[i], 0);
+	            if(fctrl->torch_trigger[0])
+	            {
+		                led_trigger_event(fctrl->torch_trigger[0], PUPILLIGHT_CUR6);
+	            }
+
+            if (fctrl->switch_trigger)
+                led_trigger_event(fctrl->switch_trigger, 1);
+        }
+        break;
+
+	case LED_FLASH1: {
+#ifdef CONFIG_HMCT_DUAL_FLASH_INVERSE_CTL
+		if (fctrl->func_tbl->camera_flash_high2) {
+			if (fctrl->flash_op_current[1] > fctrl->flash_max_current[1]) {
+				fctrl->flash_op_current[1] = fctrl->flash_max_current[1];
+			}
+			fctrl->func_tbl->camera_flash_high2(fctrl, flash_data);
+		}
+#else
+		if (fctrl->func_tbl->camera_flash_high1) {
+			if (fctrl->flash_op_current[0] > fctrl->flash_max_current[0]) {
+				fctrl->flash_op_current[0] = fctrl->flash_max_current[0];
+			}
+			fctrl->func_tbl->camera_flash_high1(fctrl, flash_data);
+		}
+#endif
+	break;
+	}
+
+	case LED_FLASH2: {
+#ifdef CONFIG_HMCT_DUAL_FLASH_INVERSE_CTL
+		if (fctrl->func_tbl->camera_flash_high1) {
+			if (fctrl->flash_op_current[0] > fctrl->flash_max_current[0]) {
+				fctrl->flash_op_current[0] = fctrl->flash_max_current[0];
+			}
+			fctrl->func_tbl->camera_flash_high1(fctrl, flash_data);
+		}
+#else
+		if (fctrl->func_tbl->camera_flash_high2) {
+			if (fctrl->flash_op_current[1] > fctrl->flash_max_current[1]) {
+				fctrl->flash_op_current[1] = fctrl->flash_max_current[1];
+			}
+			fctrl->func_tbl->camera_flash_high2(fctrl, flash_data);
+		}
+#endif
+	break;
+	}
+
+	default:
+	    CDBG(" invaild cmd = %d X.\n", value);
+	}
+	kfree(flash_data);
+	CDBG(" X\n");
+};
+
+static int32_t hmct_torch_create_classdev(struct platform_device *pdev,
+				void *data)
+{
+	int32_t rc = 0;
+	struct msm_flash_ctrl_t *fctrl =
+		(struct msm_flash_ctrl_t *)data;
+
+	if (!fctrl) {
+		pr_err("Invalid fctrl\n");
+		return -EINVAL;
+	}
+	fctrl->led_cl_dev.brightness_set = hmct_flash_brightness_set;
+	fctrl->led_cl_dev.brightness = LED_OFF;
+	/*note:id = 0 for rear flash,id = 1 for front flash*/
+	if (pdev->id == 0) {
+		fctrl->led_cl_dev.name = "flashlight";
+		rc = led_classdev_register(&pdev->dev,&fctrl->led_cl_dev);
+		if (rc) {
+			pr_err("Failed to register rear led dev. rc = %d\n", rc);
+			return rc;
+		}
+		/*hmct_flash_brightness_set(&fctrl->led_dev, LED_OFF);*/
+	} else if (pdev->id == 1) {
+		fctrl->led_cl_dev.name = "front_flashlight";
+		rc = led_classdev_register(&pdev->dev,&fctrl->led_cl_dev);
+		if (rc) {
+			pr_err("Failed to register front led dev. rc = %d\n", rc);
+			return rc;
+		}
+		/*hmct_flash_brightness_set(&fctrl->led_dev, LED_OFF);*/
+	} else {
+		pr_err("Failed to register led dev. rc = %d\n", rc);
+		return rc;
+	}
+	return 0;
+};
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 static int32_t msm_flash_get_subdev_id(
 	struct msm_flash_ctrl_t *flash_ctrl, void *arg)
 {
@@ -653,7 +953,8 @@ static int32_t msm_flash_low(
 	for (i = 0; i < flash_ctrl->torch_num_sources; i++) {
 		if (flash_ctrl->torch_trigger[i]) {
 			max_current = flash_ctrl->torch_max_current[i];
-			if (flash_data->flash_current[i] >= 0 &&
+			if (flash_ctrl->flash_num_sources == 2 &&
+				flash_data->flash_current[i] >= 0 &&
 				flash_data->flash_current[i] <
 				max_current) {
 				curr = flash_data->flash_current[i];
@@ -690,7 +991,8 @@ static int32_t msm_flash_high(
 	for (i = 0; i < flash_ctrl->flash_num_sources; i++) {
 		if (flash_ctrl->flash_trigger[i]) {
 			max_current = flash_ctrl->flash_max_current[i];
-			if (flash_data->flash_current[i] >= 0 &&
+			if (flash_ctrl->flash_num_sources == 2 &&
+				flash_data->flash_current[i] >= 0 &&
 				flash_data->flash_current[i] <
 				max_current) {
 				curr = flash_data->flash_current[i];
@@ -708,6 +1010,167 @@ static int32_t msm_flash_high(
 		led_trigger_event(flash_ctrl->switch_trigger, 1);
 	return 0;
 }
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+/*hisense add for dual led control start*/
+static int32_t msm_flash_low1 (
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	uint32_t curr = 0, max_current = 0;
+	int32_t i = 0;
+
+	CDBG("Enter\n");
+	if (flash_ctrl->flash_num_sources < 2) {
+		pr_err("single led\n");
+		return 0;
+	}
+	/* Turn off flash triggers */
+	for (i = 0; i < flash_ctrl->flash_num_sources; i++)
+		if (flash_ctrl->flash_trigger[i])
+			led_trigger_event(flash_ctrl->flash_trigger[i], 0);
+
+	/* Turn on flash triggers */
+	i = 0;
+	if (flash_ctrl->torch_trigger[i]) {
+		max_current = flash_ctrl->torch_max_current[i];
+		if (flash_data->flash_current[i] >= 0 &&
+			flash_data->flash_current[i] <
+			max_current) {
+			curr = flash_data->flash_current[i];
+		} else {
+			curr = flash_ctrl->torch_op_current[i];
+			pr_debug("LED current clamped to %d\n",
+				curr);
+		}
+		CDBG("low_flash_current[%d] = %d", i, curr);
+		led_trigger_event(flash_ctrl->torch_trigger[i],
+			curr);
+	}
+	if (flash_ctrl->switch_trigger)
+		led_trigger_event(flash_ctrl->switch_trigger, 1);
+	CDBG("Exit\n");
+	return 0;
+}
+static int32_t msm_flash_low2 (
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	uint32_t curr = 0, max_current = 0;
+	int32_t i = 0;
+
+	CDBG("Enter\n");
+	if (flash_ctrl->flash_num_sources < 2) {
+		pr_err("single led\n");
+		return 0;
+	}
+	/* Turn off flash triggers */
+	for (i = 0; i < flash_ctrl->flash_num_sources; i++)
+		if (flash_ctrl->flash_trigger[i])
+			led_trigger_event(flash_ctrl->flash_trigger[i], 0);
+
+	/* Turn on flash triggers */
+	i = 1;
+	if (flash_ctrl->torch_trigger[i]) {
+		max_current = flash_ctrl->torch_max_current[i];
+		if (flash_data->flash_current[i] >= 0 &&
+			flash_data->flash_current[i] <
+			max_current) {
+			curr = flash_data->flash_current[i];
+		} else {
+			curr = flash_ctrl->torch_op_current[i];
+			pr_debug("LED current clamped to %d\n",
+				curr);
+		}
+		CDBG("low_flash_current[%d] = %d", i, curr);
+		led_trigger_event(flash_ctrl->torch_trigger[i],
+			curr);
+	}
+	if (flash_ctrl->switch_trigger)
+		led_trigger_event(flash_ctrl->switch_trigger, 1);
+	CDBG("Exit\n");
+	return 0;
+}
+
+static int32_t msm_flash_high1(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int32_t curr = 0;
+	int32_t max_current = 0;
+	int32_t i = 0;
+
+	if (flash_ctrl->flash_num_sources < 2) {
+		pr_err("single led\n");
+		return 0;
+	}
+
+	/* Turn off torch triggers */
+	for (i = 0; i < flash_ctrl->torch_num_sources; i++)
+		if (flash_ctrl->torch_trigger[i])
+			led_trigger_event(flash_ctrl->torch_trigger[i], 0);
+
+	/* Turn on flash triggers */
+	i = 0;
+	if (flash_ctrl->flash_trigger[i]) {
+		max_current = flash_ctrl->flash_max_current[i];
+		if (flash_data->flash_current[i] >= 0 &&
+			flash_data->flash_current[i] <
+			max_current) {
+			curr = flash_data->flash_current[i];
+		} else {
+			curr = flash_ctrl->flash_op_current[i];
+			pr_debug("LED flash_current[%d] clamped %d\n",
+				i, curr);
+		}
+		CDBG("high_flash_current[%d] = %d", i, curr);
+		led_trigger_event(flash_ctrl->flash_trigger[i],
+			curr);
+	}
+	if (flash_ctrl->switch_trigger)
+		led_trigger_event(flash_ctrl->switch_trigger, 1);
+	return 0;
+}
+static int32_t msm_flash_high2(
+	struct msm_flash_ctrl_t *flash_ctrl,
+	struct msm_flash_cfg_data_t *flash_data)
+{
+	int32_t curr = 0;
+	int32_t max_current = 0;
+	int32_t i = 0;
+
+	if (flash_ctrl->flash_num_sources < 2) {
+		pr_err("single led\n");
+		return 0;
+	}
+
+	/* Turn off torch triggers */
+	for (i = 0; i < flash_ctrl->torch_num_sources; i++)
+		if (flash_ctrl->torch_trigger[i])
+			led_trigger_event(flash_ctrl->torch_trigger[i], 0);
+
+	/* Turn on flash triggers */
+	i = 1;
+	if (flash_ctrl->flash_trigger[i]) {
+		max_current = flash_ctrl->flash_max_current[i];
+		if (flash_data->flash_current[i] >= 0 &&
+			flash_data->flash_current[i] <
+			max_current) {
+			curr = flash_data->flash_current[i];
+		} else {
+			curr = flash_ctrl->flash_op_current[i];
+			pr_debug("LED flash_current[%d] clamped %d\n",
+				i, curr);
+		}
+		CDBG("high_flash_current[%d] = %d", i, curr);
+		led_trigger_event(flash_ctrl->flash_trigger[i],
+			curr);
+	}
+	if (flash_ctrl->switch_trigger)
+		led_trigger_event(flash_ctrl->switch_trigger, 1);
+	return 0;
+}
+/*hisense add for dual led control end*/
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 
 static int32_t msm_flash_query_current(
 	struct msm_flash_ctrl_t *flash_ctrl,
@@ -754,12 +1217,38 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 	struct msm_flash_cfg_data_t *flash_data =
 		(struct msm_flash_cfg_data_t *) argp;
 
+#ifdef CONFIG_HMCT_LOW_BATTERY_FLASH_CTL
+	char *event = "TRIGGER=camera";
+	char *envp[2] = {NULL};
+	envp[0] = event;
+	envp[1] = NULL;
+#endif /*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
+
 	mutex_lock(flash_ctrl->flash_mutex);
 
 	CDBG("Enter %s type %d\n", __func__, flash_data->cfg_type);
 
 	switch (flash_data->cfg_type) {
 	case CFG_FLASH_INIT:
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+		if (MSM_CAMERA_FLASH_RELEASE != flash_ctrl->flash_state &&
+								flash_ctrl->led_cl_dev.brightness != LED_OFF){
+			if (flash_ctrl->func_tbl->camera_flash_off) {
+				flash_ctrl->func_tbl->camera_flash_off(flash_ctrl, flash_data);
+			}
+			if (flash_ctrl->func_tbl->camera_flash_release) {
+				flash_ctrl->func_tbl->camera_flash_release(flash_ctrl);
+			}
+		}
+		/*Disable torch button on top menu. Add by hisense.*/
+		flash_ctrl->led_cl_dev.brightness = LED_CAM_DISABLE;
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
+#ifdef CONFIG_HMCT_LOW_BATTERY_FLASH_CTL
+               if (!check_battery_capacity_enough()){
+                       pr_err("CFG_FLASH_INIT, don't flash\n");
+                       kobject_uevent_env(&flash_ctrl->led_cl_dev.dev->kobj, KOBJ_CHANGE, envp);
+               }
+#endif
 		rc = msm_flash_init_prepare(flash_ctrl, flash_data);
 		break;
 	case CFG_FLASH_RELEASE:
@@ -770,6 +1259,10 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 			CDBG(pr_fmt("Invalid state : %d\n"),
 				flash_ctrl->flash_state);
 		}
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+		/*Set turnoff state of torch button. Add by hisense.*/
+		flash_ctrl->led_cl_dev.brightness = LED_OFF;
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 		break;
 	case CFG_FLASH_OFF:
 		if ((flash_ctrl->flash_state != MSM_CAMERA_FLASH_RELEASE) &&
@@ -786,10 +1279,23 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 	case CFG_FLASH_LOW:
 		if ((flash_ctrl->flash_state == MSM_CAMERA_FLASH_OFF) ||
 			(flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT)) {
+#ifdef CONFIG_HMCT_LOW_BATTERY_FLASH_CTL
+                if (check_battery_capacity_enough()) {
 			rc = flash_ctrl->func_tbl->camera_flash_low(
 				flash_ctrl, flash_data);
 			if (!rc)
 				flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
+		} else {
+                    pr_err("MSM_CAMERA_LED_LOW, don't flash\n");
+                    kobject_uevent_env(&flash_ctrl->led_cl_dev.dev->kobj, KOBJ_CHANGE, envp);
+                    rc = 0;
+                }
+#else/*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
+			rc = flash_ctrl->func_tbl->camera_flash_low(
+				flash_ctrl, flash_data);
+			if (!rc)
+				flash_ctrl->flash_state = MSM_CAMERA_FLASH_LOW;
+#endif/*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
 		} else {
 			CDBG(pr_fmt("Invalid state : %d\n"),
 				flash_ctrl->flash_state);
@@ -798,10 +1304,23 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 	case CFG_FLASH_HIGH:
 		if ((flash_ctrl->flash_state == MSM_CAMERA_FLASH_OFF) ||
 			(flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT)) {
+#ifdef CONFIG_HMCT_LOW_BATTERY_FLASH_CTL
+            if (check_battery_capacity_enough()) {
+                rc = flash_ctrl->func_tbl->camera_flash_high(
+                    flash_ctrl, flash_data);
+				if (!rc)
+					flash_ctrl->flash_state = MSM_CAMERA_FLASH_HIGH;
+            } else {
+                pr_err("MSM_CAMERA_LED_HIGH, don't flash\n");
+                kobject_uevent_env(&flash_ctrl->led_cl_dev.dev->kobj, KOBJ_CHANGE, envp);
+                rc = 0;
+            }
+#else/*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
 			rc = flash_ctrl->func_tbl->camera_flash_high(
 				flash_ctrl, flash_data);
 			if (!rc)
 				flash_ctrl->flash_state = MSM_CAMERA_FLASH_HIGH;
+#endif/*CONFIG_HMCT_LOW_BATTERY_FLASH_CTL*/
 		} else {
 			CDBG(pr_fmt("Invalid state : %d\n"),
 				flash_ctrl->flash_state);
@@ -1335,8 +1854,12 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 #endif
 	flash_ctrl->msm_sd.sd.devnode->fops = &msm_flash_v4l2_subdev_fops;
 
-	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_PMIC)
+	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_PMIC) {
 		rc = msm_torch_create_classdev(pdev, flash_ctrl);
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+		rc = hmct_torch_create_classdev(pdev, flash_ctrl);
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
+	}
 
 	CDBG("probe success\n");
 	return rc;
@@ -1384,6 +1907,12 @@ static struct msm_flash_table msm_pmic_flash_table = {
 		.camera_flash_low = msm_flash_low,
 		.camera_flash_high = msm_flash_high,
 		.camera_flash_query_current = msm_flash_query_current,
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+		.camera_flash_low1 = msm_flash_low1,
+		.camera_flash_low2 = msm_flash_low2,
+		.camera_flash_high1 = msm_flash_high1,
+		.camera_flash_high2 = msm_flash_high2,
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 	},
 };
 

@@ -184,7 +184,10 @@ extern int mmc_get_ext_csd(struct mmc_card *card, u8 **new_ext_csd);
 extern int mmc_set_auto_bkops(struct mmc_card *card, bool enable);
 extern int mmc_suspend_clk_scaling(struct mmc_host *host);
 extern void mmc_flush_detect_work(struct mmc_host *host);
-
+#ifdef CONFIG_MMC_FFU
+extern int mmc_get_ext_csd_ffu(struct mmc_card *card, u8 **new_ext_csd);
+extern int mmc_reinit_oldcard(struct mmc_host *host);
+#endif/*CONFIG_MMC_FFU*/
 #define MMC_ERASE_ARG		0x00000000
 #define MMC_SECURE_ERASE_ARG	0x80000000
 #define MMC_TRIM_ARG		0x00000001

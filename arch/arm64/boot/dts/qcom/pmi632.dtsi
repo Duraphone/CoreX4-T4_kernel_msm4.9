@@ -316,12 +316,13 @@
 			dpdm-supply = <&qusb_phy>;
 			qcom,auto-recharge-soc = <98>;
 			qcom,chg-vadc = <&pmi632_vadc>;
-			qcom,flash-disable-soc = <10>;
+			//qcom,flash-disable-soc = <10>;
 			qcom,sw-jeita-enable;
 			qcom,step-charging-enable;
 			qcom,hw-die-temp-mitigation;
 			qcom,hw-connector-mitigation;
 			qcom,connector-internal-pull-kohm = <100>;
+			qcom,aicl-5v-thd = <4000>;
 
 			qcom,thermal-mitigation
 				= <3000000 2500000 2000000 1500000
@@ -594,6 +595,7 @@
 		};
 
 		pmi632_rgb: qcom,leds@d000 {
+			status = "disabled";
 			compatible = "qcom,tri-led";
 			reg = <0xd000 0x100>;
 			red {

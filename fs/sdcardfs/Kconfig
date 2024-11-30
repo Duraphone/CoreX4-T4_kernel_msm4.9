@@ -11,3 +11,10 @@ config SDCARD_FS_FADV_NOACTIVE
 	default y
 	help
 	  Sdcardfs supports fadvise noactive mode.
+
+config MULTI_USER_ID
+	bool "resolve permission between multi user id"
+	depends on SDCARD_FS
+	default y
+	help
+	  Sdcardfs supports multi user can read/write same files and dirs.

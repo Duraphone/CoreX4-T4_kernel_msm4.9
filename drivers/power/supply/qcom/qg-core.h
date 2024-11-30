@@ -99,7 +99,9 @@ struct qpnp_qg {
 	struct votable		*fifo_irq_disable_votable;
 	struct votable		*good_ocv_irq_disable_votable;
 	u32			qg_base;
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	struct mutex        bat_temp_lock;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	/* local data variables */
 	u32			batt_id_ohm;
 	struct qg_kernel_data	kdata;

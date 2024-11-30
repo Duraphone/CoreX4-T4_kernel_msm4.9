@@ -425,6 +425,9 @@ extern struct block_device *bdget_disk(struct gendisk *disk, int partno);
 
 extern void set_device_ro(struct block_device *bdev, int flag);
 extern void set_disk_ro(struct gendisk *disk, int flag);
+#ifdef CONFIG_SD_ERR_CHECK
+extern void set_sd_disk_health_status(struct gendisk *disk, char *status);
+#endif/*CONFIG_SD_ERR_CHECK*/
 
 static inline int get_disk_ro(struct gendisk *disk)
 {

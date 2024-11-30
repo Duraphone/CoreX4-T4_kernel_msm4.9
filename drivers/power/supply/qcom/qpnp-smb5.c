@@ -29,6 +29,10 @@
 #include "smb5-reg.h"
 #include "smb5-lib.h"
 #include "schgm-flash.h"
+#ifdef CONFIG_HISENSE_SGM2540
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
+#endif /*CONFIG_HISENSE_SGM2540*/
 
 static struct smb_params smb5_pmi632_params = {
 	.fcc			= {
@@ -221,7 +225,8 @@ struct smb5 {
 	struct smb_dt_props	dt;
 };
 
-static int __debug_mask;
+static int __debug_mask = 
+	PR_PARALLEL | PR_INTERRUPT | PR_OTG | PR_MISC | PR_REGISTER;
 module_param_named(
 	debug_mask, __debug_mask, int, 0600
 );
@@ -368,6 +373,10 @@ static int smb5_configure_internal_pull(struct smb_charger *chg, int type,
 #define BITE_WDOG_TIMEOUT_8S		0x3
 #define BARK_WDOG_TIMEOUT_MASK		GENMASK(3, 2)
 #define BARK_WDOG_TIMEOUT_SHIFT		2
+
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+#define DEFAULT_AICL_5V_THD         4000
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static int smb5_parse_dt(struct smb5 *chip)
 {
 	struct smb_charger *chg = &chip->chg;
@@ -407,7 +416,59 @@ static int smb5_parse_dt(struct smb5 *chip)
 				"qcom,usb-icl-ua", &chip->dt.usb_icl_ua);
 	if (rc < 0)
 		chip->dt.usb_icl_ua = -EINVAL;
-
+#ifdef CONFIG_HISENSE_SGM2540
+		rc = of_get_named_gpio(node, "qcom,magconn-otg-id-gpio", 0);
+		chg->magconn_otg_id_gpio = rc;
+		if(!gpio_is_valid(chg->magconn_otg_id_gpio)) {
+			dev_err(chg->dev, "invalid magconn_otg_id_gpio rc = %d\n", rc);
+			return rc;
+		}
+		rc = gpio_request(chg->magconn_otg_id_gpio, "magconn-otg-id");
+		if (rc < 0) {
+			dev_err(chg->dev,
+				"%s: gpio %d request failed. rc = %d\n",
+				__func__, chg->magconn_otg_id_gpio, rc);
+			return rc;
+		}
+#endif /*CONFIG_HISENSE_SGM2540*/
+#ifdef CONFIG_HISENSE_TYPEC_OTG
+		rc = of_get_named_gpio(node, "qcom,typec-otg-id-gpio", 0);
+		chg->typec_otg_id_gpio = rc;
+		if(!gpio_is_valid(chg->typec_otg_id_gpio)) {
+			dev_err(chg->dev, "invalid typec_otg_id_gpio rc = %d\n", rc);
+			return rc;
+		}
+		rc = gpio_request(chg->typec_otg_id_gpio, "typec-otg-id");
+		if (rc < 0) {
+			dev_err(chg->dev,
+				"%s: gpio %d request failed. rc = %d\n",
+				__func__, chg->typec_otg_id_gpio, rc);
+			return rc;
+		}
+		rc = of_get_named_gpio(node, "qcom,otg-switch-id-gpio", 0);
+		chg->otg_switch_id_gpio = rc;
+		if(!gpio_is_valid(chg->otg_switch_id_gpio)) {
+			dev_err(chg->dev, "invalid otg_switch_id_gpio rc = %d\n", rc);
+			return rc;
+		}
+		rc = gpio_request(chg->otg_switch_id_gpio, "otg_switch_id");
+		if (rc < 0) {
+			dev_err(chg->dev,
+				"%s: gpio %d request failed. rc = %d\n",
+				__func__, chg->otg_switch_id_gpio, rc);
+			return rc;
+		}
+#endif /*CONFIG_HISENSE_TYPEC_OTG*/
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	rc = of_property_read_u32(node,
+				"qcom,float-icl-ua", &chg->float_icl_ua);
+	if (rc < 0)
+		chg->float_icl_ua = -EINVAL;
+	rc = of_property_read_u32(node,
+				"qcom,aicl-5v-thd", &chg->custom_aicl_5v_thd);
+	if (rc < 0)
+		chg->custom_aicl_5v_thd = DEFAULT_AICL_5V_THD;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	rc = of_property_read_u32(node,
 				"qcom,otg-cl-ua", &chg->otg_cl_ua);
 	if (rc < 0)
@@ -627,8 +688,17 @@ static enum power_supply_property smb5_usb_props[] = {
 	POWER_SUPPLY_PROP_HVDCP_OPTI_ALLOWED,
 	POWER_SUPPLY_PROP_QC_OPTI_DISABLE,
 	POWER_SUPPLY_PROP_MOISTURE_DETECTED,
-};
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	POWER_SUPPLY_PROP_HEALTH,
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+#ifdef CONFIG_HISENSE_SGM2540
+	POWER_SUPPLY_PROP_DOUBLE_CHARGER,
+#endif /* CONFIG_HISENSE_SGM2540 */
 
+};
+#ifdef CONFIG_HISENSE_SGM2540
+extern bool sgm2540_double_charger_ok(void);
+#endif
 static int smb5_usb_get_prop(struct power_supply *psy,
 		enum power_supply_property psp,
 		union power_supply_propval *val)
@@ -670,7 +740,11 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 		rc = smblib_get_prop_input_current_settled(chg, val);
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		val->intval = chg->real_charger_type;
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		val->intval = POWER_SUPPLY_TYPE_USB_PD;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		break;
 	case POWER_SUPPLY_PROP_REAL_TYPE:
 		val->intval = chg->real_charger_type;
@@ -768,6 +842,17 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_MOISTURE_DETECTED:
 		val->intval = chg->moisture_present;
 		break;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	case POWER_SUPPLY_PROP_HEALTH:
+		val->intval = chg->usbin_ov ? POWER_SUPPLY_HEALTH_OVERVOLTAGE : POWER_SUPPLY_HEALTH_GOOD;
+		break;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+#ifdef CONFIG_HISENSE_SGM2540
+	case POWER_SUPPLY_PROP_DOUBLE_CHARGER:
+		val->intval = sgm2540_double_charger_ok();
+		break;
+#endif /* CONFIG_HISENSE_SGM2540 */
+
 	default:
 		pr_err("get prop %d is not supported in usb\n", psp);
 		rc = -EINVAL;
@@ -1262,6 +1347,14 @@ static enum power_supply_property smb5_batt_props[] = {
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_RECHARGE_SOC,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	POWER_SUPPLY_PROP_CHARGING_ENABLED,
+	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
+	POWER_SUPPLY_PROP_CHARGER_TYPE,
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+#ifdef CONFIG_HISENSE_SGM2540
+    POWER_SUPPLY_PROP_CHARGER_REDET,
+#endif /* CONFIG_HISENSE_SGM2540 */
 	POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE,
 };
 
@@ -1311,6 +1404,10 @@ static int smb5_get_prop_batt_iterm(struct smb_charger *chg,
 	return rc;
 }
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+extern bool chg_full_status;
+extern bool full_soc_flag;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static int smb5_batt_get_prop(struct power_supply *psy,
 		enum power_supply_property psp,
 		union power_supply_propval *val)
@@ -1320,10 +1417,26 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		if (chg_full_status || full_soc_flag) {
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+			pr_err("%s:POWER_SUPPLY_STATUS_FULL\n",__func__);
+		}
+		else
+			rc = smblib_get_prop_batt_status(chg, val);
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		rc = smblib_get_prop_batt_status(chg, val);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		if (vbat_is_dead)
+			val->intval = POWER_SUPPLY_HEALTH_DEAD;
+		else
+			rc = smblib_get_prop_batt_health(chg, val);
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		rc = smblib_get_prop_batt_health(chg, val);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		rc = smblib_get_prop_batt_present(chg, val);
@@ -1367,8 +1480,11 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		rc = smblib_get_prop_from_bms(chg,
 				POWER_SUPPLY_PROP_CURRENT_NOW, val);
+		pr_err("%s: current now (%d)mA\n", __func__, val->intval/1000);
+#ifndef CONFIG_HISENSE_CHARGE_FG_FUNCTION
 		if (!rc)
 			val->intval *= (-1);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 		val->intval = get_client_vote(chg->fcc_votable,
@@ -1421,6 +1537,18 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 		rc = smblib_get_prop_from_bms(chg,
 				POWER_SUPPLY_PROP_CHARGE_FULL, val);
 		break;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		rc = smblib_get_prop_input_suspend(chg, val);
+		val->intval = !(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE:
+		rc = smblib_get_prop_safety_timer_enable(chg, val);
+		break;
+	case POWER_SUPPLY_PROP_CHARGER_TYPE:
+		val->intval = chg->real_charger_type;
+		break;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	case POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE:
 		val->intval = chg->fcc_stepper_enable;
 		break;
@@ -1444,6 +1572,10 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 	int rc = 0;
 	struct smb_charger *chg = power_supply_get_drvdata(psy);
 	bool enable;
+	
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	union power_supply_propval value = {0, };
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_STATUS:
@@ -1452,6 +1584,16 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 		rc = smblib_set_prop_input_suspend(chg, val);
 		break;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+		pr_err("%s set charging_enabled=%d\n", __func__, val->intval);
+		value.intval = !(val->intval);
+		rc = smblib_set_prop_input_suspend(chg, &value);
+		break;
+	case POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE:
+		rc = smblib_set_prop_safety_timer_enable(chg, val);
+		break;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	case POWER_SUPPLY_PROP_BATTERY_CHARGING_ENABLED:
 		vote(chg->chg_disable_votable, USER_VOTER, !val->intval, 0);
 		break;
@@ -1521,6 +1663,11 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 					false, 0);
 		}
 		break;
+#ifdef CONFIG_HISENSE_SGM2540
+	case POWER_SUPPLY_PROP_CHARGER_REDET:
+		smblib_rerun_apsd_if_required(chg);
+	    break;
+#endif /* CONFIG_HISENSE_SGM2540 */
 	default:
 		rc = -EINVAL;
 	}
@@ -1533,6 +1680,10 @@ static int smb5_batt_prop_is_writeable(struct power_supply *psy,
 {
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	case POWER_SUPPLY_PROP_CHARGING_ENABLED:
+	case POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE:
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
 	case POWER_SUPPLY_PROP_CAPACITY:
@@ -1757,6 +1908,8 @@ static int smb5_configure_micro_usb(struct smb_charger *chg)
 {
 	int rc;
 
+	dev_err(chg->dev,"smb5_configure_micro_usb\n");
+
 	rc = smblib_masked_write(chg, TYPE_C_INTERRUPT_EN_CFG_2_REG,
 					MICRO_USB_STATE_CHANGE_INT_EN_BIT,
 					MICRO_USB_STATE_CHANGE_INT_EN_BIT);
@@ -1807,16 +1960,20 @@ static int smb5_configure_mitigation(struct smb_charger *chg)
 
 	if (!chg->hw_die_temp_mitigation && !chg->hw_connector_mitigation)
 		return 0;
-
+#ifndef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	/*make sure it can be charged  when die  temp > 90 */
 	if (chg->hw_die_temp_mitigation) {
 		chan = DIE_TEMP_CHANNEL_EN_BIT;
 		src_cfg = THERMREG_DIE_ADC_SRC_EN_BIT
 			| THERMREG_DIE_CMP_SRC_EN_BIT;
 	}
-
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	if (chg->hw_connector_mitigation) {
 		chan |= CONN_THM_CHANNEL_EN_BIT;
+#ifndef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	/*prevent charging fail when typec connector temp > 45 */
 		src_cfg |= THERMREG_CONNECTOR_ADC_SRC_EN_BIT;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	}
 
 	rc = smblib_masked_write(chg, MISC_THERMREG_SRC_CFG_REG,
@@ -1929,6 +2086,9 @@ static int smb5_init_hw(struct smb5 *chip)
 	int rc, type = 0;
 	u8 val = 0;
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	chg->usbin_ov = false;
+#endif /* CONFIG_HISENSE_CHARGE_FG_FUNCTION */
 	if (chip->dt.no_battery)
 		chg->fake_capacity = 50;
 
@@ -1939,7 +2099,13 @@ static int smb5_init_hw(struct smb5 *chip)
 	if (chip->dt.batt_profile_fv_uv < 0)
 		smblib_get_charge_param(chg, &chg->param.fv,
 				&chg->batt_profile_fv_uv);
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	rc = smblib_set_charge_param(chg, &chg->param.aicl_5v_threshold,
+		    chg->custom_aicl_5v_thd);
+	if (rc < 0)
+		dev_err(chg->dev,
+		    "Error in setting AICL threshold rc=%d\n", rc);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	smblib_get_charge_param(chg, &chg->param.usb_icl,
 				&chg->default_icl_ua);
 	smblib_get_charge_param(chg, &chg->param.aicl_5v_threshold,
@@ -1957,6 +2123,23 @@ static int smb5_init_hw(struct smb5 *chip)
 		dev_err(chg->dev, "Couldn't configure HVDCP rc=%d\n", rc);
 		return rc;
 	}
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	/* disable uUSB factory mode detection to prevent icl not effective*/
+	rc = smblib_masked_write(chg, TYPEC_U_USB_CFG_REG,
+					EN_MICRO_USB_FACTORY_MODE_BIT,0);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't disable uUSB factory mode detection rc=%d\n",
+				rc);
+		return rc;
+	}
+	rc = smblib_read(chg, TYPEC_U_USB_CFG_REG, &val);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't read U_USB config rc=%d\n",
+				rc);
+		return rc;
+	}
+	dev_err(chg->dev, "reg(0x1570)=0x%x\n",val);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	/*
 	 * PMI632 can have the connector type defined by a dedicated register
@@ -1986,7 +2169,7 @@ static int smb5_init_hw(struct smb5 *chip)
 		type = !!(val & EN_MICRO_USB_MODE_BIT);
 	}
 
-	pr_debug("Connector type=%s\n", type ? "Micro USB" : "TypeC");
+	pr_info("Connector type=%s\n", type ? "Micro USB" : "TypeC");
 
 	if (type) {
 		chg->connector_type = POWER_SUPPLY_CONNECTOR_MICRO_USB;
@@ -2062,6 +2245,27 @@ static int smb5_init_hw(struct smb5 *chip)
 	vote(chg->usb_icl_votable, HW_LIMIT_VOTER,
 			chg->hw_max_icl_ua > 0, chg->hw_max_icl_ua);
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	/*disable  USBIN_AICL_ADC_EN_BIT to prevent vbus from accidental reverse boost
+	 * when the adapter is removed
+       */
+	rc = smblib_masked_write(chg, USBIN_AICL_OPTIONS_CFG_REG,
+				USBIN_AICL_ADC_EN_BIT, 0);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't config AICL rc=%d\n", rc);
+		return rc;
+	}
+	/*enable USBIN_AICL_PERIODIC_RERUN_EN_BIT to adjust current*/
+	rc = smblib_masked_write(chg, USBIN_AICL_OPTIONS_CFG_REG,
+				USBIN_AICL_PERIODIC_RERUN_EN_BIT, 0x10);
+	if (rc < 0) {
+		dev_err(chg->dev, "Couldn't config AICL PERIODIC ERERUN EN rc=%d\n", rc);
+		return rc;
+	}
+	smblib_set_usb_suspend(chg, true);
+	msleep(50);
+	smblib_set_usb_suspend(chg, false);
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	/*
 	 * AICL configuration:
 	 * AICL ADC disable
@@ -2074,6 +2278,7 @@ static int smb5_init_hw(struct smb5 *chip)
 			return rc;
 		}
 	}
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	/* enable the charging path */
 	rc = vote(chg->chg_disable_votable, DEFAULT_VOTER, false, 0);
@@ -2447,6 +2652,9 @@ static struct smb_irq_info smb5_irqs[] = {
 	[USBIN_OV_IRQ] = {
 		.name		= "usbin-ov",
 		.handler	= usbin_ov_irq_handler,
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		.wake		= true,
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	},
 	[USBIN_PLUGIN_IRQ] = {
 		.name		= "usbin-plugin",
@@ -2807,6 +3015,7 @@ static int smb5_probe(struct platform_device *pdev)
 	struct smb_charger *chg;
 	int rc = 0;
 
+	pr_err("QPNP SMB5 probe start\n");
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;

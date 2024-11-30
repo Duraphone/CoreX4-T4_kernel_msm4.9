@@ -22,6 +22,11 @@
 #include <linux/fs_struct.h>
 #include <linux/ratelimit.h>
 
+#ifdef CONFIG_MULTI_USER_ID
+extern unsigned long  app_divid_id;
+extern bool app_divid_node_be_set;
+#endif/*CONFIG_MULTI_USER_ID*/
+
 const struct cred *override_fsids(struct sdcardfs_sb_info *sbi,
 		struct sdcardfs_inode_data *data)
 {
@@ -557,6 +562,9 @@ static int sdcardfs_permission(struct vfsmount *mnt, struct inode *inode, int ma
 	int err;
 	struct inode tmp;
 	struct sdcardfs_inode_data *top = top_data_get(SDCARDFS_I(inode));
+	#ifdef CONFIG_MULTI_USER_ID
+	bool app_divid_set_status = app_divid_node_be_set;
+	#endif/*CONFIG_MULTI_USER_ID*/
 
 	if (IS_ERR(mnt))
 		return PTR_ERR(mnt);
@@ -579,11 +587,33 @@ static int sdcardfs_permission(struct vfsmount *mnt, struct inode *inode, int ma
 	tmp.i_gid = make_kgid(&init_user_ns, get_gid(mnt, inode->i_sb, top));
 	tmp.i_mode = (inode->i_mode & S_IFMT)
 			| get_mode(mnt, SDCARDFS_I(inode), top);
+	#ifdef CONFIG_MULTI_USER_ID
+	if(!app_divid_set_status)
+	#endif/*CONFIG_MULTI_USER_ID*/
 	data_put(top);
 	tmp.i_sb = inode->i_sb;
 	if (IS_POSIXACL(inode))
 		pr_warn("%s: This may be undefined behavior...\n", __func__);
 	err = generic_permission(&tmp, mask);
+	#ifdef CONFIG_MULTI_USER_ID
+	if(app_divid_set_status)
+	{
+		if ((err == -EACCES) && (top->userid == app_divid_id))
+		{	
+			//printk(" <%s> userid = %lu, recheck permission.\n", __func__, app_divid_id);
+			tmp.i_gid = make_kgid(&init_user_ns, get_hs_gid(mnt, top));
+			err = generic_permission(&tmp, mask);
+		}
+
+		if ((err == -EACCES) && (top->userid == 0))
+		{	
+			//printk(" <%s> userid = 0, recheck permission.\n", __func__);
+			tmp.i_gid = make_kgid(&init_user_ns, get_hs_gid(mnt, top));
+			err = generic_permission(&tmp, mask);
+		}
+		data_put(top);
+	}
+	#endif/*CONFIG_MULTI_USER_ID*/
 	return err;
 }
 

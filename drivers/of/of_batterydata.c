@@ -359,7 +359,11 @@ struct device_node *of_batterydata_get_best_profile(
 			for (i = 0; i < batt_ids.num; i++) {
 				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
 				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
+#ifdef CONFIG_COMP_MULTI_PROFILE
 				in_range = (delta <= limit);
+#else /*CONFIG_COMP_MULTI_PROFILE*/
+				in_range = true;
+#endif /*CONFIG_COMP_MULTI_PROFILE*/
 				/*
 				 * Check if the delta is the lowest one
 				 * and also if the limits are in range
@@ -370,6 +374,7 @@ struct device_node *of_batterydata_get_best_profile(
 					best_node = node;
 					best_delta = delta;
 					best_id_kohm = batt_ids.kohm[i];
+					pr_err("best_node->name=%s\n",best_node->name);
 				}
 			}
 		}
@@ -379,7 +384,7 @@ struct device_node *of_batterydata_get_best_profile(
 		pr_err("No battery data found\n");
 		return best_node;
 	}
-
+#ifdef CONFIG_COMP_MULTI_PROFILE
 	/* check that profile id is in range of the measured batt_id */
 	if (abs(best_id_kohm - batt_id_kohm) >
 			((best_id_kohm * id_range_pct) / 100)) {
@@ -387,7 +392,7 @@ struct device_node *of_batterydata_get_best_profile(
 			best_id_kohm, batt_id_kohm, id_range_pct);
 		return NULL;
 	}
-
+#endif /* CONFIG_COMP_MULTI_PROFILE */
 	rc = of_property_read_string(best_node, "qcom,battery-type",
 							&battery_type);
 	if (!rc)

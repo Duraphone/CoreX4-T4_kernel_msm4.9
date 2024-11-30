@@ -29,6 +29,10 @@
 
 #include <asm/serial.h>
 
+#ifdef CONFIG_HISENSE_SERIAL_CONSOLE_CTRL
+#include <linux/his_debug_base.h>
+#endif /* CONFIG_HISENSE_SERIAL_CONSOLE_CTRL */
+
 static struct console early_con = {
 	.name =		"uart",		/* fixed up at earlycon registration */
 	.flags =	CON_PRINTBUFFER | CON_BOOT,
@@ -132,6 +136,12 @@ static int __init register_earlycon(char *buf, const struct earlycon_id *match)
 	int err;
 	struct uart_port *port = &early_console_dev.port;
 
+#ifdef CONFIG_HISENSE_SERIAL_CONSOLE_CTRL
+	if (!get_debug_flag_bit(SERIAL_ENABLE_BIT)) {
+		pr_err("Disabled bootconsole for release version\n");
+		return 0;
+	}
+#endif /* CONFIG_HISENSE_SERIAL_CONSOLE_CTRL */
 	/* On parsing error, pass the options buf to the setup function */
 	if (buf && !parse_options(&early_console_dev, buf))
 		buf = NULL;

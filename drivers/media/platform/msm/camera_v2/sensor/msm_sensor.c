@@ -17,8 +17,9 @@
 #include "msm_camera_i2c_mux.h"
 #include <linux/regulator/rpm-smd-regulator.h>
 #include <linux/regulator/consumer.h>
-#include <media/adsp-shmem-device.h>
-
+/*******hisense added for check mid --- start*******/
+#include <linux/productinfo.h>
+/*******hisense added for check mid --- end*******/
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
@@ -956,6 +957,24 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		}
 		break;
 	}
+/*******hisense added for check mid --- start*******/
+
+	case CFG_SENSOR_PRODUCT_INFO: {
+		if (cdata->cfg.sensor_info.position == BACK_CAMERA_B)
+			productinfo_register(PRODUCTINFO_MAIN_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+		else if (cdata->cfg.sensor_info.position == FRONT_CAMERA_B)
+			productinfo_register(PRODUCTINFO_FRONT_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+		else if (cdata->cfg.sensor_info.position == AUX_CAMERA_B)
+			productinfo_register(PRODUCTINFO_MAIN_ANX_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+		else
+			productinfo_register(PRODUCTINFO_MAIN_ANX_CAMERA_ID,
+				"undefine_sensor", NULL);
+		break;
+	}
+/*******hisense added for check mid --- end*******/
 
 	default:
 		rc = -EFAULT;
@@ -1445,6 +1464,25 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void *argp)
 		}
 		break;
 	}
+/*******hisense added for check mid --- start*******/
+
+	case CFG_SENSOR_PRODUCT_INFO: {
+		if (cdata->cfg.sensor_info.position == BACK_CAMERA_B)
+			productinfo_register(PRODUCTINFO_MAIN_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+		else if (cdata->cfg.sensor_info.position == FRONT_CAMERA_B)
+			productinfo_register(PRODUCTINFO_FRONT_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+		else if (cdata->cfg.sensor_info.position == AUX_CAMERA_B)
+			productinfo_register(PRODUCTINFO_MAIN_ANX_CAMERA_ID,
+				cdata->cfg.sensor_info.sensor_name, NULL);
+
+		else
+			productinfo_register(PRODUCTINFO_MAIN_ANX_CAMERA_ID,
+				"undefine_sensor", NULL);
+		break;
+	}
+/*******hisense added for check mid --- end*******/
 
 	default:
 		rc = -EFAULT;

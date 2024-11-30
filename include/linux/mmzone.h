@@ -57,6 +57,14 @@ enum {
 #endif
 	MIGRATE_PCPTYPES, /* the number of types on the pcp lists */
 	MIGRATE_HIGHATOMIC = MIGRATE_PCPTYPES,
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	/*
+	 * MIGRATE_UNMOVABLE_ISOLATEx migration type is designed to
+	 * allocate the appointed-order unmovable pages.
+	 */
+	MIGRATE_UNMOVABLE_ISOLATE1,
+	MIGRATE_UNMOVABLE_ISOLATE2,
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #ifdef CONFIG_MEMORY_ISOLATION
 	MIGRATE_ISOLATE,	/* can't allocate from here */
 #endif
@@ -82,7 +90,12 @@ extern int *get_migratetype_fallbacks(int mtype);
 #  define is_migrate_cma_page(_page) false
 #  define get_cma_migrate_type() MIGRATE_MOVABLE
 #endif
-
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+#  define is_unmovable_isolate1(migratetype) \
+			unlikely((migratetype) == MIGRATE_UNMOVABLE_ISOLATE1)
+#  define is_unmovable_isolate2(migratetype) \
+			unlikely((migratetype) == MIGRATE_UNMOVABLE_ISOLATE2)
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 #define for_each_migratetype_order(order, type) \
 	for (order = 0; order < MAX_ORDER; order++) \
 		for (type = 0; type < MIGRATE_TYPES; type++)
@@ -148,6 +161,10 @@ enum zone_stat_item {
 	NUMA_OTHER,		/* allocation from other node */
 #endif
 	NR_FREE_CMA_PAGES,
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	NR_FREE_UNMOVABLE_ISOLATE1_PAGES,
+	NR_FREE_UNMOVABLE_ISOLATE2_PAGES,
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	NR_VM_ZONE_STAT_ITEMS };
 
 enum node_stat_item {
@@ -438,6 +455,14 @@ struct zone {
 	unsigned long		present_pages;
 
 	const char		*name;
+#ifdef 	CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	/*
+	 * Number of MIGRATE_UNMOVABLE_ISOLATEx page block. To maintain for just
+	 * optimization. Protected by zone->lock.
+	 */
+	long long			nr_migrate_unmovable_isolate1_block;
+	long long			nr_migrate_unmovable_isolate2_block;
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 #ifdef CONFIG_MEMORY_ISOLATION
 	/*
@@ -892,6 +917,12 @@ int sysctl_min_slab_ratio_sysctl_handler(struct ctl_table *, int,
 
 extern int numa_zonelist_order_handler(struct ctl_table *, int,
 			void __user *, size_t *, loff_t *);
+
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+int unmovable_isolate_disabled_sysctl_handler(struct ctl_table *, int,
+			void __user *, size_t *, loff_t *);
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
+
 extern char numa_zonelist_order[];
 #define NUMA_ZONELIST_ORDER_LEN 16	/* string buffer size */
 

@@ -12,6 +12,7 @@
  *
  *     - JMicron (hardware and technical support)
  */
+#define pr_fmt(fmt) "mmc:" fmt
 
 #include <linux/delay.h>
 #include <linux/highmem.h>
@@ -1822,7 +1823,9 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		if (mrq->data)
 			mrq->data->error = -EIO;
 		host->mrq = NULL;
-		sdhci_dumpregs(host);
+/*Delete start, for solving crash issue about TFCard*/
+//		sdhci_dumpregs(host);
+/*Delete end, for solving crash issue about TFCard*/
 		mmc_request_done(host->mmc, mrq);
 		return;
 	}
@@ -2648,6 +2651,10 @@ out:
 	sdhci_writel(host, host->ier, SDHCI_SIGNAL_ENABLE);
 out_unlock:
 	spin_unlock_irqrestore(&host->lock, flags);
+	if(err && !strcmp(mmc_hostname(mmc), "mmc0")){
+		pr_buf_err("%s:eMMC tuning error: %d\n", __func__, err);
+    }
+
 	return err;
 }
 
@@ -2928,7 +2935,7 @@ static void sdhci_timeout_timer(unsigned long data)
 
 	if (host->cmd && !sdhci_data_line_cmd(host->cmd)) {
 		host->mmc->err_stats[MMC_ERR_REQ_TIMEOUT]++;
-		pr_err("%s: Timeout waiting for hardware cmd interrupt.\n",
+		pr_buf_err("%s: Timeout waiting for hardware cmd interrupt.\n",
 		       mmc_hostname(host->mmc));
 		MMC_TRACE(host->mmc, "Timeout waiting for h/w interrupt\n");
 		sdhci_dumpregs(host);

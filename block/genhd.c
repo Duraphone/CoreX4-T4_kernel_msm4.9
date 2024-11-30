@@ -1446,6 +1446,30 @@ int invalidate_partition(struct gendisk *disk, int partno)
 
 EXPORT_SYMBOL(invalidate_partition);
 
+#ifdef CONFIG_SD_ERR_CHECK
+/*===========================================================================
+ * FUNCTION: set_sd_disk_health_status
+   PARAMETER:
+ *    @disk:the disk which has been monitor
+      @status:the err code which will translate to real code
+ *
+ * Description: send uevent to vold
+ *
+ * Returns: NULL
+
+===========================================================================*/
+void set_sd_disk_health_status(struct gendisk *disk, char *status)
+{
+    char *event = status;
+    char *envp[] = { event, NULL };
+
+    event[11] = '\0';
+    kobject_uevent_env(&disk_to_dev(disk)->kobj, KOBJ_CHANGE, envp);
+    pr_buf_err("disk name = %s: err,status = %s\n",disk->disk_name, status);
+}
+EXPORT_SYMBOL(set_sd_disk_health_status);
+#endif/*CONFIG_SD_ERR_CHECK*/
+
 /*
  * Disk events - monitor disk events like media change and eject request.
  */

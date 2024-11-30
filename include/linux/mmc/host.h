@@ -592,7 +592,9 @@ struct mmc_host {
 
 	/* Ongoing data transfer that allows commands during transfer */
 	struct mmc_request	*ongoing_mrq;
-
+#ifdef CONFIG_MMC_FFU
+	atomic_t		stop_queue;
+#endif /*CONFIG_MMC_FFU*/
 #ifdef CONFIG_FAIL_MMC_REQUEST
 	struct fault_attr	fail_mmc_request;
 #endif

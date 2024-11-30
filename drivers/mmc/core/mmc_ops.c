@@ -8,6 +8,7 @@
  * the Free Software Foundation; either version 2 of the License, or (at
  * your option) any later version.
  */
+#define pr_fmt(fmt) "mmc:" fmt
 
 #include <linux/slab.h>
 #include <linux/export.h>
@@ -229,8 +230,11 @@ int mmc_all_send_cid(struct mmc_host *host, u32 *cid)
 	cmd.flags = MMC_RSP_R2 | MMC_CMD_BCR;
 
 	err = mmc_wait_for_cmd(host, &cmd, MMC_CMD_RETRIES);
-	if (err)
+	if (err){
+		pr_buf_err("%s:send cmd2 fail,err=%d\n",
+			mmc_hostname(host), err);
 		return err;
+	}
 
 	memcpy(cid, cmd.resp, sizeof(u32) * 4);
 
@@ -318,6 +322,12 @@ mmc_send_cxd_data(struct mmc_card *card, struct mmc_host *host,
 		mmc_set_data_timeout(&data, card);
 
 	mmc_wait_for_req(host, &mrq);
+	if (cmd.error || data.error) {
+		
+		pr_buf_err("opcode:%d failed, cmd.error:%d, data.error:%d\n",
+			opcode, cmd.error, data.error);
+		
+	}
 
 	if (cmd.error)
 		return cmd.error;
@@ -409,6 +419,38 @@ int mmc_get_ext_csd(struct mmc_card *card, u8 **new_ext_csd)
 	return err;
 }
 EXPORT_SYMBOL_GPL(mmc_get_ext_csd);
+
+#ifdef CONFIG_MMC_FFU
+int mmc_get_ext_csd_ffu(struct mmc_card *card, u8 **new_ext_csd)
+{
+	int err;
+	u8 *ext_csd;
+
+	if (!card || !new_ext_csd)
+		return -EINVAL;
+
+	if (!mmc_can_ext_csd(card))
+		return -EOPNOTSUPP;
+
+	/*
+	 * As the ext_csd is so large and mostly unused, we don't store the
+	 * raw block in mmc_card.
+	 */
+	ext_csd = kzalloc(512, GFP_KERNEL);
+	if (!ext_csd)
+		return -ENOMEM;
+
+	err = mmc_send_cxd_data(card, card->host, MMC_SEND_EXT_CSD, ext_csd,
+				512);
+	if (err)
+		kfree(ext_csd);
+	else
+		*new_ext_csd = ext_csd;
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(mmc_get_ext_csd_ffu);
+#endif/*CONFIG_MMC_FFU*/
 
 int mmc_spi_read_ocr(struct mmc_host *host, int highcap, u32 *ocrp)
 {

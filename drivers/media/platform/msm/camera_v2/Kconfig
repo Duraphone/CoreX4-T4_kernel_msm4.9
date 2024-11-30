@@ -268,3 +268,20 @@ config MSM_SEC_CCI_DEBUG
 	---help---
 	  Enables simulation of secure camera for Secure CCI Realy
 	  debugging.
+config HMCT_CAMERA_DEBUG
+	bool "hmct camera debug nodes"
+	depends on MSMB_CAMERA
+	---help---
+		hmct camera debug nodes,such as flash,csid,eeprom debug nodes.
+
+config HMCT_LOW_BATTERY_FLASH_CTL
+	bool "hmct camera flash low battery"
+	depends on MSMB_CAMERA
+	---help---
+		hmct camera flash low battery.
+		
+config HMCT_ACTUATOR_POWERDOWN_MORESTEP
+        bool "HMCT_ACTUATOR_POWERDOWN_MORESTEP"
+        default n
+        ---help---
+             actuator power down.

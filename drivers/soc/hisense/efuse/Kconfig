@@ -1,0 +1,5 @@
+config HISENSE_FUSE_STATUS
+	bool "read the fuse status for the customer."
+	default n
+	help
+	  add the fuse status node to read.

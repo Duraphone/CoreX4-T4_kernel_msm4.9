@@ -109,7 +109,12 @@ endif
 endif
 
 %_defconfig: $(obj)/conf
+ifneq ($(findstring $(TARGET_PRODUCT), msm8937_64 msm8953_64),)
 	$(Q)$< $(silent) --defconfig=arch/$(SRCARCH)/configs/$@ $(Kconfig)
+else
+	$(Q)bash $(srctree)/drivers/soc/hisense/scripts/merge_defconfig.sh $@
+	$(Q)$< $(silent) --defconfig=arch/$(SRCARCH)/configs/.$@ $(Kconfig)
+endif
 
 configfiles=$(wildcard $(srctree)/kernel/configs/$@ $(srctree)/arch/$(SRCARCH)/configs/$@)
 

@@ -1725,6 +1725,29 @@ static void subsys_free_irqs(struct subsys_device *subsys)
 		devm_free_irq(desc->dev, desc->err_ready_irq, subsys);
 }
 
+void set_subsys_restart_level(int level)
+{
+	struct subsys_device *subsys;
+
+	pr_info("set restart level %d.\n", level);
+	if ((level != RESET_SUBSYS_COUPLED) && (level != RESET_SOC)) {
+		pr_err("Invalid restart level %d!\n", level);
+		return;
+	}
+
+	mutex_lock(&subsys_list_lock);
+	list_for_each_entry(subsys, &subsys_list, list) {
+		if ((subsys != NULL)) {
+			pr_info("Set subsys name %s, restart level: %d\n",
+					subsys->desc->name, level);
+			subsys->restart_level = level;
+		}
+	}
+	mutex_unlock(&subsys_list_lock);
+}
+EXPORT_SYMBOL(set_subsys_restart_level);
+
+
 struct subsys_device *subsys_register(struct subsys_desc *desc)
 {
 	struct subsys_device *subsys;
@@ -1764,6 +1787,7 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 
 	dev_set_name(&subsys->dev, "subsys%d", subsys->id);
 
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
 	mutex_init(&subsys->track.lock);
 
 	ret = device_register(&subsys->dev);

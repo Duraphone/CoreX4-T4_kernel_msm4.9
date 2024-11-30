@@ -395,6 +395,9 @@ LINUXINCLUDE    := \
 		$(if $(KBUILD_SRC), -I$(srctree)/include) \
 		-I$(objtree)/include
 
+# Add Hisense module include path
+LINUXINCLUDE    += -I$(srctree)/drivers/soc/hisense/include
+
 LINUXINCLUDE	+= $(filter-out $(LINUXINCLUDE),$(USERINCLUDE))
 
 KBUILD_AFLAGS   := -D__ASSEMBLY__

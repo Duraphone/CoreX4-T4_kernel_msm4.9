@@ -844,6 +844,23 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 	next_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
 	while (next_lens_pos) {
 		/* conditions which help to reduce park lens time */
+#ifdef CONFIG_HMCT_ACTUATOR_POWERDOWN_MORESTEP
+		CDBG("next_lens_pos:%d,a_ctrl->park_lens.max_step:%d\n",
+				next_lens_pos, a_ctrl->park_lens.max_step);
+		if (next_lens_pos > (a_ctrl->park_lens.max_step *
+			PARK_LENS_LONG_STEP)) {
+			next_lens_pos = next_lens_pos -
+				(a_ctrl->park_lens.max_step *2);
+		} else if (next_lens_pos > a_ctrl->park_lens.max_step) {
+			next_lens_pos = next_lens_pos -
+				a_ctrl->park_lens.max_step;
+		} else {
+			next_lens_pos = (next_lens_pos >
+				a_ctrl->park_lens.max_step) ?
+				(next_lens_pos - a_ctrl->park_lens.
+				max_step) : 0;
+		}
+#else
 		if (next_lens_pos > (a_ctrl->park_lens.max_step *
 			PARK_LENS_LONG_STEP)) {
 			next_lens_pos = next_lens_pos -
@@ -865,6 +882,7 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 				(next_lens_pos - a_ctrl->park_lens.
 				max_step) : 0;
 		}
+#endif
 		a_ctrl->func_tbl->actuator_parse_i2c_params(a_ctrl,
 			next_lens_pos, a_ctrl->park_lens.hw_params,
 			a_ctrl->park_lens.damping_delay);
@@ -2084,8 +2102,14 @@ static struct platform_driver msm_actuator_platform_driver = {
 
 static int __init msm_actuator_init_module(void)
 {
+	int32_t rc = 0;
+
 	CDBG("Enter\n");
-	platform_driver_register(&msm_actuator_platform_driver);
+	rc = platform_driver_register(&msm_actuator_platform_driver);
+	if (!rc)
+		return rc;
+
+	CDBG("%s:%d rc %d\n", __func__, __LINE__, rc);
 	return i2c_add_driver(&msm_actuator_i2c_driver);
 }
 

@@ -895,6 +895,13 @@ static int set_config(struct usb_composite_dev *cdev,
 	unsigned		power = gadget_is_otg(gadget) ? 8 : 100;
 	int			tmp;
 
+	if ((gadget->state == USB_STATE_CONFIGURED) &&
+		(cdev->config) &&
+		(cdev->config->bConfigurationValue == number)) {
+		pr_info("%s Don't need set_config again\n", __func__);
+		return 0;
+	}
+
 	if (number) {
 		list_for_each_entry(c, &cdev->configs, list) {
 			if (c->bConfigurationValue == number) {
@@ -989,7 +996,6 @@ static int set_config(struct usb_composite_dev *cdev,
 	else
 		power = min(power, 900U);
 done:
-	usb_gadget_vbus_draw(gadget, power);
 	if (result >= 0 && cdev->delayed_status)
 		result = USB_GADGET_DELAYED_STATUS;
 	return result;
@@ -2481,8 +2487,6 @@ void composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 	spin_unlock_irqrestore(&cdev->lock, flags);
-
-	usb_gadget_vbus_draw(gadget, 2);
 }
 
 void composite_resume(struct usb_gadget *gadget)
@@ -2531,14 +2535,13 @@ void composite_resume(struct usb_gadget *gadget)
 				f->resume(f);
 		}
 
+
 		maxpower = cdev->config->MaxPower ?
 			cdev->config->MaxPower : CONFIG_USB_GADGET_VBUS_DRAW;
 		if (gadget->speed < USB_SPEED_SUPER)
 			maxpower = min(maxpower, 500U);
 		else
 			maxpower = min(maxpower, 900U);
-
-		usb_gadget_vbus_draw(gadget, maxpower);
 	}
 
 	spin_unlock_irqrestore(&cdev->lock, flags);

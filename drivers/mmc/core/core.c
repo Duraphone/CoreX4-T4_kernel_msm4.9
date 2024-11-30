@@ -10,6 +10,8 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+ #define pr_fmt(fmt) "mmc:" fmt
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -3162,9 +3164,10 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, u32 ocr)
 	 */
 	mmc_host_clk_hold(host);
 	err = mmc_wait_for_cmd(host, &cmd, 0);
-	if (err)
+	if (err){
+		pr_buf_err("%s:send cmd11 fail,err=%d\n",mmc_hostname(host),err);
 		goto err_command;
-
+	}
 	if (!mmc_host_is_spi(host) && (cmd.resp[0] & R1_ERROR)) {
 		err = -EIO;
 		goto err_command;
@@ -3933,8 +3936,8 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		/* Do not retry else we can't see errors */
 		err = mmc_wait_for_cmd(card->host, &cmd, 0);
 		if (err || (cmd.resp[0] & 0xFDF92000)) {
-			pr_err("error %d requesting status %#x\n",
-				err, cmd.resp[0]);
+			pr_buf_err("%s: error %d requesting status %#x\n",
+				__func__, err, cmd.resp[0]);
 			err = -EIO;
 			goto out;
 		}
@@ -4739,16 +4742,16 @@ int mmc_flush_cache(struct mmc_card *card)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				EXT_CSD_FLUSH_CACHE, 1, 0);
 		if (err == -ETIMEDOUT) {
-			pr_err("%s: cache flush timeout\n",
+			pr_buf_err("%s: cache flush timeout\n",
 					mmc_hostname(card->host));
 			err = mmc_interrupt_hpi(card);
 			if (err) {
-				pr_err("%s: mmc_interrupt_hpi() failed (%d)\n",
+				pr_buf_err("%s: mmc_interrupt_hpi() failed (%d)\n",
 						mmc_hostname(card->host), err);
 				err = -ENODEV;
 			}
 		} else if (err) {
-			pr_err("%s: cache flush error %d\n",
+			pr_buf_err("%s: cache flush error %d\n",
 					mmc_hostname(card->host), err);
 		}
 	}

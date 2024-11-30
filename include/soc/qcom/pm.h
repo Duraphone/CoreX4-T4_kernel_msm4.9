@@ -69,4 +69,6 @@ static inline int lpm_get_latency(struct latency_level *level,
 }
 #endif
 
+
+
 #endif  /* __ARCH_ARM_MACH_MSM_PM_H */

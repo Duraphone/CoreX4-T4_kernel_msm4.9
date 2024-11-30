@@ -29,6 +29,7 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/exception.h>
 #include <soc/qcom/minidump.h>
+#include <linux/his_debug_base.h>
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -140,6 +141,7 @@ void panic(const char *fmt, ...)
 	int old_cpu, this_cpu;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
 
+	run_fs_sync_work();
 	trace_kernel_panic(0);
 
 	/*
@@ -235,6 +237,10 @@ void panic(const char *fmt, ...)
 	 */
 	if (_crash_kexec_post_notifiers)
 		__crash_kexec(NULL);
+		
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	subsystem_report("kernel", buf, false);
+#endif /* CONFIG_SUBSYS_ERR_REPORT */
 
 #ifdef CONFIG_VT
 	unblank_screen();

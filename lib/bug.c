@@ -143,6 +143,9 @@ enum bug_trap_type report_bug(unsigned long bugaddr, struct pt_regs *regs)
 	const struct bug_entry *bug;
 	const char *file;
 	unsigned line, warning;
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	char err_log[128] = {0};
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
 
 	if (!is_valid_bugaddr(bugaddr))
 		return BUG_TRAP_TYPE_NONE;
@@ -174,11 +177,23 @@ enum bug_trap_type report_bug(unsigned long bugaddr, struct pt_regs *regs)
 
 	printk(KERN_DEFAULT "------------[ cut here ]------------\n");
 
-	if (file)
+	if (file) {
 		pr_crit("kernel BUG at %s:%u!\n", file, line);
-	else
-		pr_crit("Kernel BUG at %pB [verbose debug info unavailable]\n",
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+		snprintf(err_log, sizeof(err_log),
+				"kernel BUG at %s:%u!", file, line);
+		subsystem_report("kernel", err_log, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
+	} else {
+		pr_crit("Kernel BUG at %p [verbose debug info unavailable]\n",
 			(void *)bugaddr);
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+		snprintf(err_log, sizeof(err_log),
+				"kernel BUG at %p [verbose debug info unavailable]",
+				(void *)bugaddr);
+		subsystem_report("kernel", err_log, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT*/
+	}
 
 	return BUG_TRAP_TYPE_BUG;
 }

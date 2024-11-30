@@ -19,6 +19,11 @@
 #include <asm/pgtable.h>
 #include "internal.h"
 
+#include <linux/his_debug_base.h>
+
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+#include <linux/unmovable_isolate.h>
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 void __attribute__((weak)) arch_report_meminfo(struct seq_file *m)
 {
 }
@@ -65,7 +70,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 
 	available = si_mem_available();
 
-	show_val_kb(m, "MemTotal:       ", i.totalram);
+	show_val_kb(m, "MemTotal:       ", get_hs_total_ram()/PAGE_SIZE);
 	show_val_kb(m, "MemFree:        ", i.freeram);
 	show_val_kb(m, "MemAvailable:   ", available);
 	show_val_kb(m, "Buffers:        ", i.bufferram);
@@ -154,6 +159,12 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		    global_page_state(NR_FREE_CMA_PAGES));
 #endif
 
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	show_val_kb(m, "Isolate1Free:   ",
+		    global_page_state(NR_FREE_UNMOVABLE_ISOLATE1_PAGES));
+	show_val_kb(m, "Isolate2Free:   ",
+		    global_page_state(NR_FREE_UNMOVABLE_ISOLATE2_PAGES));
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 	hugetlb_report_meminfo(m);
 
 	arch_report_meminfo(m);

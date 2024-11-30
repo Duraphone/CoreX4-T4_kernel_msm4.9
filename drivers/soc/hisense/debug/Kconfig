@@ -1,0 +1,36 @@
+config HISENSE_SERIAL_CONSOLE_CTRL
+	bool "add the serial console control code"
+	depends on HISENSE_DEBUG_CTRL
+	default n
+	help
+	  Enable it can control the console register for serial.
+	  if unsure, say N
+
+config HS_POWERON_REASON
+	bool "show device power on/off reason"
+	depends on HISENSE_DEBUG_CTRL
+	default n
+	help
+	  Provide a node to show power on/off reason
+
+config HISENSE_SHOW_BOOTLOG
+	bool "show bootloader log"
+	depends on HISENSE_DEBUG_CTRL
+	default n
+	help
+	  If enable, you can get boot log via
+	  "cat /d/debug_control/boot_log"
+
+config HISENSE_SILENCE_REBOOT
+	bool "hisense silence reboot"
+	depends on HISENSE_PANIC_HANDLE
+	default n
+	help
+	  Feature to enable silence reboot
+
+config PRINTK_PROCESS_INFO
+	bool "add print process pid and name"
+	depends on MACH_HISENSE_SMARTPHONE
+	default y
+	help
+	  Enable it when want to add the process info for printk

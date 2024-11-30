@@ -420,6 +420,25 @@ static inline int get_gid(struct vfsmount *mnt,
 		return multiuser_get_uid(data->userid, vfsopts->gid);
 }
 
+#ifdef CONFIG_MULTI_USER_ID
+static inline int get_hs_gid(struct vfsmount *mnt,
+		struct sdcardfs_inode_data *data)
+{
+	struct sdcardfs_vfsmount_options *opts = mnt->data;
+
+	if (opts->gid == AID_SDCARD_RW)
+		/* As an optimization, certain trusted system components only run
+		 * as owner but operate across all users. Since we're now handing
+		 * out the sdcard_rw GID only to trusted apps, we're okay relaxing
+		 * the user boundary enforcement for the default view. The UIDs
+		 * assigned to app directories are still multiuser aware.
+		 */
+		return AID_SDCARD_RW;
+	else
+		return multiuser_get_hs_uid(data->userid, opts->gid);
+}
+#endif/*CONFIG_MULTI_USER_ID*/
+
 static inline int get_mode(struct vfsmount *mnt,
 		struct sdcardfs_inode_info *info,
 		struct sdcardfs_inode_data *data)

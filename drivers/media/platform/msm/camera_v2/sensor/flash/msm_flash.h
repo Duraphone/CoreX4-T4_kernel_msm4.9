@@ -47,6 +47,18 @@ struct msm_flash_func_t {
 		struct msm_flash_cfg_data_t *);
 	int32_t (*camera_flash_query_current)(struct msm_flash_ctrl_t *,
 		struct msm_flash_query_data_t *);
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+	/*hisense add for dual led control start*/
+	int32_t (*camera_flash_low1)(struct msm_flash_ctrl_t *,
+		struct msm_flash_cfg_data_t *);
+    int32_t (*camera_flash_low2)(struct msm_flash_ctrl_t *,
+		struct msm_flash_cfg_data_t *);
+    int32_t (*camera_flash_high1)(struct msm_flash_ctrl_t *,
+		struct msm_flash_cfg_data_t *);
+    int32_t (*camera_flash_high2)(struct msm_flash_ctrl_t *,
+		struct msm_flash_cfg_data_t *);
+	/*hisense add for dual led control end*/
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 
 };
 
@@ -102,6 +114,8 @@ struct msm_flash_ctrl_t {
 
 	/* flash state */
 	enum msm_camera_flash_state_t flash_state;
+	/*Add by hisense*/
+	struct led_classdev led_cl_dev; 
 	int32_t (*platform_flash_init)(struct msm_flash_ctrl_t *flash_ctrl,
 		struct msm_flash_cfg_data_t *flash_data);
 };

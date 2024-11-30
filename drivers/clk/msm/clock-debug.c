@@ -713,6 +713,7 @@ void clock_debug_print_enabled(bool print_parent)
 {
 	if (likely(!debug_suspend))
 		return;
+
 	if (print_parent)
 		clock_debug_print_enabled_clocks(NULL);
 	else

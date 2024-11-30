@@ -22,6 +22,10 @@
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/parser.h>
+#ifdef CONFIG_MULTI_USER_ID
+#include <linux/his_debug_base.h>
+#include <linux/acpi.h>
+#endif/*#ifdef CONFIG_MULTI_USER_ID*/
 
 enum {
 	Opt_fsuid,
@@ -462,10 +466,67 @@ static struct file_system_type sdcardfs_fs_type = {
 };
 MODULE_ALIAS_FS(SDCARDFS_NAME);
 
+#ifdef CONFIG_MULTI_USER_ID
+unsigned long  app_divid_id = 881;
+bool app_divid_node_be_set = false;
+#define MIN_DIVID_ID	881
+
+static ssize_t app_divid_id_proc_write(struct file *file, const char __user *buffer,
+		size_t count, loff_t *ppos)
+{
+	unsigned long value;
+	int ret;
+
+	ret = kstrtoul_from_user(buffer, count, 10, &value);
+	if (ret < 0) {
+		printk("illegal value in app_divid_id buffer\n");
+		return -EINVAL;
+	}
+
+	//printk("app_divid_id buffer=%s, count=%d, value=%lu \n", (char *)buffer, (int)count, value);
+	if(value < MIN_DIVID_ID){
+		printk("new app_divid_id is out of range: %lu \n", value);
+		return -EINVAL;
+	}
+	app_divid_id = value;
+        app_divid_node_be_set = true;
+	return count;
+}
+static int app_divid_id_proc_show(struct seq_file *m, void *v)
+{
+
+	/*
+	 * Tagged format, for easy grepping and expansion.
+	 */
+	seq_printf(m, "app divid id is:       %lu\n", app_divid_id);
+
+	return 0;
+}
+
+static int app_divid_id_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, app_divid_id_proc_show, NULL);
+}
+
+static const struct file_operations app_divid_id_proc_fops = {
+	.open           = app_divid_id_proc_open,
+	.read           = seq_read,
+	.write          =app_divid_id_proc_write,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+#endif/*CONFIG_MULTI_USER_ID*/
 static int __init init_sdcardfs_fs(void)
 {
 	int err;
 
+	#ifdef CONFIG_MULTI_USER_ID
+	int ret = -EPERM;
+	ret = his_create_procfs_file("app_divid_id", S_IRWXUGO, &app_divid_id_proc_fops);
+	if (ret < 0)
+		printk("proc create app_divid_id failed !\n");
+	#endif/*CONFIG_MULTI_USER_ID*/
+	
 	pr_info("Registering sdcardfs " SDCARDFS_VERSION "\n");
 
 	err = sdcardfs_init_inode_cache();

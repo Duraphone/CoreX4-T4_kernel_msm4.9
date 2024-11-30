@@ -18,6 +18,9 @@
 #include <function/u_ncm.h>
 #endif
 
+#include <linux/his_debug_base.h>
+extern struct device_bootinfo dev_bi;
+bool connection = false;
 #ifdef CONFIG_USB_CONFIGFS_F_ACC
 extern int acc_ctrlrequest(struct usb_composite_dev *cdev,
 				const struct usb_ctrlrequest *ctrl);
@@ -314,7 +317,7 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 		name[len - 1] = '\0';
 
 	mutex_lock(&gi->lock);
-
+	pr_err("%s()\n", __func__);
 	if (!strlen(name) || strcmp(name, "none") == 0) {
 		ret = unregister_gadget(gi);
 		if (ret)
@@ -1346,6 +1349,9 @@ static int configfs_composite_bind(struct usb_gadget *gadget,
 		gi->cdev.desc.iManufacturer = s[USB_GADGET_MANUFACTURER_IDX].id;
 		gi->cdev.desc.iProduct = s[USB_GADGET_PRODUCT_IDX].id;
 		gi->cdev.desc.iSerialNumber = s[USB_GADGET_SERIAL_IDX].id;
+		if (dev_bi.meid_is_null)
+			gi->cdev.desc.iSerialNumber = 0;
+		pr_info("serial num is %d\n", gi->cdev.desc.iSerialNumber);
 	}
 
 	if (gi->use_os_desc) {
@@ -1450,8 +1456,9 @@ static void android_work(struct work_struct *data)
 	if (status[0]) {
 		kobject_uevent_env(&gi->dev->kobj,
 					KOBJ_CHANGE, connected);
-		pr_info("%s: sent uevent %s\n", __func__, connected[0]);
 		uevent_sent = true;
+		connection = true;
+		pr_info("%s: sent uevent %s connection=%d\n", __func__, connected[0],connection);
 	}
 
 	if (status[1]) {

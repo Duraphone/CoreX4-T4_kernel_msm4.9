@@ -218,6 +218,7 @@
 				qcom,scale-function = <2>;
 				qcom,hw-settle-time = <2>;
 				qcom,fast-avg-setup = <0>;
+				qcom,vadc-thermal-node;
 			};
 
 
@@ -344,6 +345,16 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		qcom,reg_raw_dbg@c000 {
+			compatible = "qcom,qpnp-reg-dbg";
+			label = "reg-dbg";
+			status = "okay";
+			qcom,smps-base-addr = <0x1400>;
+			qcom,ldo-base-addr = <0x4000>;
+			qcom,smps-count = <7>;
+			qcom,ldo-count = <23>;
+		};
+
 		pm8953_pwm: qcom,pwms@bc00 {
 			status = "disabled";
 			compatible = "qcom,pwm-lpg";
@@ -355,6 +366,19 @@
 };
 
 &thermal_zones {
+	pa-therm1-adc {
+		polling-delay-passive = <0>;
+		polling-delay = <0>;
+		thermal-sensors = <&pm8953_vadc 0x11>;
+		thermal-governor = "user_space";
+		trips {
+			active-config0 {
+	 			temperature = <65000>;
+	 			hysteresis = <1000>;
+	 			type = "passive";
+	 		};
+	 	};
+	};
 	xo-therm-adc {
 		polling-delay-passive = <0>;
 		polling-delay = <0>;

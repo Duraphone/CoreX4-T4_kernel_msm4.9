@@ -242,6 +242,7 @@ static struct qpnp_vadc_rscale_fn adc_vadc_rscale_fn[] = {
 	[SCALE_RVADC_ABSOLUTE] = {qpnp_vadc_absolute_rthr},
 };
 
+
 static int32_t qpnp_vadc_calib_device(struct qpnp_vadc_chip *vadc);
 
 static int32_t qpnp_vadc_read_reg(struct qpnp_vadc_chip *vadc, int16_t reg,

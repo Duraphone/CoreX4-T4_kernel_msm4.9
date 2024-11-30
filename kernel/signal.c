@@ -49,6 +49,11 @@
 #include <asm/cacheflush.h>
 #include "audit.h"	/* audit_signal_info() */
 
+#ifdef CONFIG_HS_CGF_NOTIFY_EVENT
+#include <linux/cgroup.h>
+#include <linux/notifier.h>
+#endif /* CONFIG_HS_CGF_NOTIFY_EVENT */
+
 /*
  * SLAB caches for signal bits.
  */
@@ -857,6 +862,15 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 	struct task_struct *t;
 	sigset_t flush;
 
+#ifdef CONFIG_HS_CGF_NOTIFY_EVENT
+	if (sig == SIGQUIT || sig == SIGABRT || sig == SIGKILL || sig == SIGSEGV) {
+		struct cgf_event event;
+
+		event.info = signal;
+		event.data = p;
+		cgf_notifier_call_chain(sig, &event);
+	}
+#endif /* CONFIG_HS_CGF_NOTIFY_EVENT */
 	if (signal->flags & (SIGNAL_GROUP_EXIT | SIGNAL_GROUP_COREDUMP)) {
 		if (!(signal->flags & SIGNAL_GROUP_EXIT))
 			return sig == SIGKILL;

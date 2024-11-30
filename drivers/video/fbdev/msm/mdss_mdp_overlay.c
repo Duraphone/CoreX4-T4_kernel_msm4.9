@@ -4979,7 +4979,7 @@ static int mdss_bl_scale_config(struct msm_fb_data_type *mfd,
 							mfd->bl_min_lvl);
 
 	/* Update current backlight to use new scaling, if it is not zero */
-	if (curr_bl)
+	if (curr_bl && mfd->allow_bl_update)
 		mdss_fb_set_backlight(mfd, curr_bl);
 
 	mutex_unlock(&mfd->bl_lock);

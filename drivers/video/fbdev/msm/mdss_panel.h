@@ -40,6 +40,8 @@ enum fps_resolution {
 #define MDSS_DSI_RST_SEQ_LEN	10
 /* worst case prefill lines for all chipsets including all vertical blank */
 #define MDSS_MDP_MAX_PREFILL_FETCH 25
+/* add for esd reg read */
+#define MDSS_DSI_ESD_CHECK_PARAMS_NUM	8
 
 #define OVERRIDE_CFG	"override"
 #define SIM_PANEL	"sim"
@@ -151,13 +153,19 @@ enum {
 	SIM_HW_TE_MODE,
 };
 
+enum {
+	NO_ROTATION,
+	MDP_ROTATION,
+	FRAMEWORK_ROTATION,
+};
+
 struct mdss_rect {
 	u16 x;
 	u16 y;
 	u16 w;
 	u16 h;
 };
-
+#define MDSS_MAX_PANEL_NAME_LEN 512
 #define MDSS_MAX_PANEL_LEN      256
 #define MDSS_INTF_MAX_NAME_LEN 5
 #define MDSS_DISPLAY_ID_MAX_LEN 16
@@ -677,6 +685,8 @@ struct mdss_panel_info {
 	u32 mdp_koff_thshold_high;
 	bool mdp_koff_thshold;
 	u32 mdp_koff_delay;
+	/* add for mdp or framework rotate solution config.*/
+	u32 panel_rotation_type;
 
 	int panel_max_fps;
 	int panel_max_vtotal;
@@ -737,6 +747,7 @@ struct mdss_panel_info {
 	void *cec_data;
 
 	char panel_name[MDSS_MAX_PANEL_LEN];
+	char *panel_lcd_id;  /* add by hmct for lcd_id */
 	struct mdss_mdp_pp_tear_check te;
 
 	/*
@@ -761,6 +772,8 @@ struct mdss_panel_info {
 	struct edp_panel_info edp;
 
 	bool is_dba_panel;
+	/* hmct add for bl delay*/
+	u32 bl_delay_ms;
 
 	/*
 	 * Delay(in ms) to accommodate s/w delay while
@@ -782,6 +795,15 @@ struct mdss_panel_info {
 
 	/* HDR properties of display panel*/
 	struct mdss_panel_hdr_properties hdr_properties;
+	/*Hisense modify for esd reg read.*/
+	u32 esd_reg[MDSS_DSI_ESD_CHECK_PARAMS_NUM];
+	u32 esd_reg_num;
+	u32 esd_reg_val[MDSS_DSI_ESD_CHECK_PARAMS_NUM];
+	u32 esd_reg_val_len;
+	const char *ic_type;
+	/*add end.*/
+	/* hmct add for lock bl brightness use to power test */
+	u32 bl_force;
 };
 
 struct mdss_panel_timing {

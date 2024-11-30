@@ -32,6 +32,16 @@
 #include "cam_hw_ops.h"
 #include <media/adsp-shmem-device.h>
 
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
+#include <linux/fs.h>
+#define  CSID_DEV_NUM  3
+#define  buf_size 1024
+static struct csid_device *csid_devs[CSID_DEV_NUM] = {NULL, NULL};
+static struct dentry *hsn_camera_dbg_root;
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
+
 #define V4L2_IDENT_CSID                            50002
 #define CSID_VERSION_V20                      0x02000011
 #define CSID_VERSION_V22                      0x02001000
@@ -333,7 +343,8 @@ static int msm_csid_config(struct csid_device *csid_dev,
 	if (!msm_csid_find_max_clk_rate(csid_dev))
 		pr_err("msm_csid_find_max_clk_rate failed\n");
 
-	clk_rate = csid_dev->csid_max_clk;
+	clk_rate = (csid_params->csi_clk > 0) ?
+				(csid_params->csi_clk) : csid_dev->csid_max_clk;
 
 	clk_rate = msm_camera_clk_set_rate(&csid_dev->pdev->dev,
 		csid_dev->csid_clk[csid_dev->csid_clk_index], clk_rate);
@@ -1040,7 +1051,141 @@ static struct v4l2_subdev_core_ops msm_csid_subdev_core_ops = {
 static const struct v4l2_subdev_ops msm_csid_subdev_ops = {
 	.core = &msm_csid_subdev_core_ops,
 };
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+struct dentry *camera_dbg_root(void)
+{
+	if (!hsn_camera_dbg_root) {
+		hsn_camera_dbg_root = debugfs_create_dir("camera_dbg", NULL);
+		if (!hsn_camera_dbg_root) {
+			pr_err("%s:%d debugfs_create_dir camera fail!\n",
+				__func__, __LINE__);
+			return NULL;
+		}
+	}
+	return hsn_camera_dbg_root;
+}
+EXPORT_SYMBOL(camera_dbg_root);
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
 
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+static ssize_t cam_csid_read(struct file *t_file,  char __user *t_char,
+	size_t t_size_t, loff_t *t_loff_t)
+{
+	int i;
+	char buffer[buf_size] = {0};
+	char *s = buffer;
+	void __iomem *csidbase;
+	struct csid_device *dev = NULL;
+	int  res = 0;
+
+	for (i = 0; i < CSID_DEV_NUM; i++) {
+		dev = csid_devs[i];
+		if (NULL == dev)
+			continue;
+		csidbase = dev->base;
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "\ncsid %d:  %s\n", dev->pdev->id, dev->pdev->name);
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "state:  %s\n",
+			(dev->csid_state) ? "CSID_POWER_DOWN":"CSID_POWER_UP");
+
+		if (dev->csid_state)
+			continue;
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "csidbase: %p\n", csidbase);
+		res = msm_camera_io_r(csidbase +
+			dev->ctrl_reg->csid_reg.csid_stats_total_pkts_rcvd_addr);
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "total recv packets: %d\n", res);
+
+		res = msm_camera_io_r(csidbase +
+			dev->ctrl_reg->csid_reg.csid_stats_ecc_addr);
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "total unrecoverable packets: %d\n", (res>>16));
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "total recoverable packets: %d\n", (res & 0xFFFF));
+
+		res = msm_camera_io_r(csidbase +
+			dev->ctrl_reg->csid_reg.csid_stats_crc_addr);
+		snprintf(s+strlen(buffer), buf_size - strlen(buffer), "total crc errors: %d\n", (res & 0xFFFF));
+
+	}
+	return simple_read_from_buffer(t_char, t_size_t,
+		t_loff_t, buffer, strlen(buffer));
+}
+
+static int cam_csid_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static const struct file_operations cam_csid_ops = {
+	.open    = cam_csid_open,
+	.read    = cam_csid_read,
+};
+
+static int cam_mipi_debugfs_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static ssize_t cam_mipi_debugfs_read(struct file *t_file,  char __user *t_char,
+	size_t t_size_t, loff_t *t_loff_t)
+{
+	int i;
+	char buffer[32] = {0};
+	int crc_data = 1, csid_result = 0;
+	void __iomem *csidbase;
+	struct csid_device *dev = NULL;
+
+	pr_err("mipi csid_status = %d\n", csid_result);
+	for (i = 0; i < CSID_DEV_NUM; i++) {
+		dev = csid_devs[i];
+		csidbase = dev->base;
+		if (i < 2) {
+			if (dev->csid_state == 0) {
+				csid_result = csid_result | (0x1<<i);
+		    crc_data = msm_camera_io_r(csidbase +
+				dev->ctrl_reg->csid_reg.csid_stats_crc_addr) & 0xFFFF;
+			if (crc_data < 5)
+				csid_result = csid_result | (0x4<<i);
+			}
+		} else {
+			if (dev->csid_state == 0) {
+				csid_result = csid_result | (0x1<<i*2);
+		    crc_data = msm_camera_io_r(csidbase +
+				dev->ctrl_reg->csid_reg.csid_stats_crc_addr) & 0xFFFF;
+			if (crc_data < 5)
+				csid_result = csid_result | (0x2<<i*2);
+			}
+		}
+
+	}
+	pr_err("mipi csid_status = %d\n", csid_result);
+	snprintf(buffer, sizeof(buffer), "%d\n", csid_result);
+
+	return simple_read_from_buffer(t_char, t_size_t,
+		t_loff_t, buffer, strlen(buffer));
+}
+
+static const struct file_operations cam_mipi_status_debugfs = {
+	.open = cam_mipi_debugfs_open,
+	.read = cam_mipi_debugfs_read,
+};
+
+static int msm_camera_mipi_debugfs(void)
+{
+	struct dentry *cam_dbg_root = NULL;
+
+	cam_dbg_root = camera_dbg_root();
+	if (!cam_dbg_root)
+		return -ENOMEM;
+
+	if (!debugfs_create_file("msm_csid", S_IRUGO | S_IWUSR, cam_dbg_root,
+		NULL, &cam_csid_ops))
+		return -ENOMEM;
+
+	if (!debugfs_create_file("cam_mipi_status", S_IRUGO | S_IWUSR, cam_dbg_root,
+		NULL, &cam_mipi_status_debugfs))
+		return -ENOMEM;
+
+	return 0;
+}
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 static int csid_probe(struct platform_device *pdev)
 {
 	struct csid_device *new_csid_dev;
@@ -1077,6 +1222,13 @@ static int csid_probe(struct platform_device *pdev)
 		}
 		CDBG("%s device id %d\n", __func__, pdev->id);
 
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+		if (pdev->id < CSID_DEV_NUM) {
+			csid_devs[pdev->id] = new_csid_dev;
+			CDBG("%s csid_devs[%d]= %p\n",
+				__func__, pdev->id, csid_devs[pdev->id]);
+		}
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 		rc = of_property_read_u32((&pdev->dev)->of_node,
 			"qcom,csi-vdd-voltage", &csi_vdd_voltage);
 		if (rc < 0) {
@@ -1243,6 +1395,11 @@ static int csid_probe(struct platform_device *pdev)
 	}
 
 	new_csid_dev->csid_state = CSID_POWER_DOWN;
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+    rc = msm_camera_mipi_debugfs();
+	if (rc != 0)
+		pr_err("msm_camera_mipi_debugfs");
+#endif /*CONFIG_HMCT_CAMERA_DEBUG*/
 	return 0;
 
 csid_invalid_irq:

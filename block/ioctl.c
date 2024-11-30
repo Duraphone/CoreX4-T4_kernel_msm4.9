@@ -514,8 +514,12 @@ int blkdev_ioctl(struct block_device *bdev, fmode_t mode, unsigned cmd,
 	case BLKDISCARD:
 		return blk_ioctl_discard(bdev, mode, arg, 0);
 	case BLKSECDISCARD:
+#if 0
 		return blk_ioctl_discard(bdev, mode, arg,
 				BLKDEV_DISCARD_SECURE);
+#else
+		return blk_ioctl_discard(bdev, mode, arg, 0);
+#endif
 	case BLKZEROOUT:
 		return blk_ioctl_zeroout(bdev, mode, arg);
 	case HDIO_GETGEO:

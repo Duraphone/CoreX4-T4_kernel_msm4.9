@@ -836,6 +836,7 @@ int32_t msm_sensor_driver_probe(void *setting,
 					(struct msm_camera_i2c_reg_array)),
 					GFP_KERNEL);
 			if (!reg_setting) {
+				kfree(slave_info32);
 				rc = -ENOMEM;
 				goto free_slave_info;
 			}
@@ -848,6 +849,7 @@ int32_t msm_sensor_driver_probe(void *setting,
 				pr_err("%s:%d: sensor id info copy failed\n",
 					__func__, __LINE__);
 				kfree(reg_setting);
+				kfree(slave_info32);
 				rc = -EFAULT;
 				goto free_slave_info;
 			}

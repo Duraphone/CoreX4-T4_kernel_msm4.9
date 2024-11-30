@@ -1,0 +1,7 @@
+
+config HISENSE_SWAPPINESS_OPT
+	bool "optimize swap memory"
+	default n
+	depends on MACH_HISENSE_SMARTPHONE
+	help
+	  Enable it to swap anon pages to swap

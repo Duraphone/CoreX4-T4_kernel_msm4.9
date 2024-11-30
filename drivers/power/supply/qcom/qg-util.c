@@ -25,6 +25,11 @@
 #include "qg-defs.h"
 #include "qg-util.h"
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+#define MSM_BAT_TEMP_SDN_COUNT         3
+#define MSM_ANDROID_SDN_LIMITED                680
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+
 static inline bool is_sticky_register(u32 addr)
 {
 	if ((addr & 0xFF) == QG_STATUS2_REG)
@@ -313,16 +318,30 @@ int qg_get_battery_temp(struct qpnp_qg *chip, int *temp)
 {
 	int rc = 0;
 	struct qpnp_vadc_result result;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	long interval_ot = 0;
+	struct timespec ts;
+	static long last_ot_secs;
+	static int battery_hot_count;
+	static bool temp_wake_flag;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	if (chip->battery_missing) {
 		*temp = 250;
 		return 0;
 	}
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	mutex_lock(&chip->bat_temp_lock);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+
 	rc = qpnp_vadc_read(chip->vadc_dev, VADC_BAT_THERM_PU2, &result);
 	if (rc) {
 		pr_err("Failed reading adc channel=%d, rc=%d\n",
 					VADC_BAT_THERM_PU2, rc);
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		mutex_unlock(&chip->bat_temp_lock);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		return rc;
 	}
 	pr_debug("batt_temp = %lld meas = 0x%llx\n",
@@ -330,6 +349,33 @@ int qg_get_battery_temp(struct qpnp_qg *chip, int *temp)
 
 	*temp = (int)result.physical;
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	/*Filter:Be more careful to report >= 680*/
+	if (*temp >= MSM_ANDROID_SDN_LIMITED) {
+		if (!temp_wake_flag) {
+			temp_wake_flag = true;
+			pm_stay_awake(chip->dev);
+		}
+		get_monotonic_boottime(&ts);
+		interval_ot = ts.tv_sec - last_ot_secs;
+		pr_err("interval_ot:%ld batt_temp:%lld count:%d\n",
+			interval_ot, result.physical, battery_hot_count);
+		if (battery_hot_count <= MSM_BAT_TEMP_SDN_COUNT)
+			*temp = MSM_ANDROID_SDN_LIMITED - 20;
+		if (interval_ot >=  1) {
+			/*only count for > 1s(unplug report changes too much)*/
+			battery_hot_count++;
+			last_ot_secs = ts.tv_sec;
+		}
+	} else {
+		 battery_hot_count = 0;
+		if (temp_wake_flag) {
+			temp_wake_flag = false;
+			pm_relax(chip->dev);
+		}
+	}
+	mutex_unlock(&chip->bat_temp_lock);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	return rc;
 }
 

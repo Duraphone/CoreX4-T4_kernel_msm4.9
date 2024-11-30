@@ -45,6 +45,8 @@
 #include <soc/qcom/subsystem_notif.h>
 
 #include <soc/qcom/smd.h>
+#include <linux/productinfo.h>
+#include <linux/proc_fs.h>
 
 #define DEVICE "wcnss_wlan"
 #define CTRL_DEVICE "wcnss_ctrl"
@@ -499,6 +501,48 @@ void wcnss_log(enum wcnss_log_type type, const char *_fmt, ...)
 	va_end(args);
 }
 EXPORT_SYMBOL(wcnss_log);
+
+#define WLAN_VERSION_LEN  200
+char wlan_version[WLAN_VERSION_LEN];
+static void wlan_register_productinfo(void)
+{
+    memset(wlan_version,0,sizeof(wlan_version));
+	snprintf(wlan_version,WLAN_VERSION_LEN,"please open Wi-Fi first.");
+	productinfo_register(PRODUCTINFO_WIFI_ID,wlan_version,NULL);
+}
+
+/// BSP: add wlan_ftm interface to statistics packets received @{
+struct proc_dir_entry *proc_wlan_ftm;
+#define WLAN_FTM_LEN    120
+char wlan_ftm[WLAN_FTM_LEN];
+
+static int wlan_ftm_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s\n", wlan_ftm);
+	return 0;
+}
+
+static int wlan_ftm_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wlan_ftm_show, NULL);
+}
+
+static const struct file_operations wlan_ftm_proc_fops = {
+	.open		= wlan_ftm_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+void init_wlan_ftm_proc(void)
+{
+	proc_wlan_ftm = proc_create("wlan_ftm", 0644, NULL, &wlan_ftm_proc_fops);
+	if(proc_wlan_ftm == NULL)
+	{
+		printk("Could not create proc entry wlan_ftm\n");
+	}
+}
+EXPORT_SYMBOL_GPL(wlan_ftm);
 
 static ssize_t wcnss_wlan_macaddr_store(struct device *dev,
 					struct device_attribute *attr,
@@ -3671,7 +3715,11 @@ static int __init wcnss_wlan_init(void)
 	platform_driver_register(&wcnss_wlan_ctrl_driver);
 	platform_driver_register(&wcnss_ctrl_driver);
 	register_pm_notifier(&wcnss_pm_notifier);
-
+    wlan_register_productinfo();
+	
+	/// BSP: add wlan_ftm interface to statistics packets received @{
+	init_wlan_ftm_proc();
+	/// @}
 	return 0;
 }
 

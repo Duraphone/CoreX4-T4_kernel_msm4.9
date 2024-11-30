@@ -46,6 +46,10 @@
 #define QPNP_VIB_MAX_PLAY_MS		15000
 #define QPNP_VIB_OVERDRIVE_PLAY_MS	30
 
+#ifdef  CONFIG_HISENSE_SILENCE_REBOOT
+extern bool hs_should_block_bl(int level);
+#endif  /* CONFIG_HISENSE_SILENCE_REBOOT */
+
 struct vib_ldo_chip {
 	struct led_classdev	cdev;
 	struct regmap		*regmap;
@@ -156,6 +160,13 @@ static int qpnp_vibrator_play_on(struct vib_ldo_chip *chip)
 	if (!chip->disable_overdrive)
 		volt_uV = chip->overdrive_volt_uV ? chip->overdrive_volt_uV
 				: min(chip->vmax_uV * 2, QPNP_VIB_LDO_VMAX_UV);
+
+#ifdef CONFIG_HISENSE_SILENCE_REBOOT
+	if (hs_should_block_bl(true)) {
+		pr_info("hs block vib ops for silence reboot\n");
+		return 0;
+	}
+#endif /* CONFIG_HISENSE_SILENCE_REBOOT */
 
 	ret = qpnp_vib_ldo_set_voltage(chip, volt_uV);
 	if (ret < 0) {

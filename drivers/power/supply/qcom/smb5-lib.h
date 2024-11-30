@@ -20,6 +20,9 @@
 #include <linux/extcon.h>
 #include <linux/alarmtimer.h>
 #include "storm-watch.h"
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+extern bool vbat_is_dead;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 enum print_reason {
 	PR_INTERRUPT	= BIT(0),
@@ -354,7 +357,20 @@ struct smb_charger {
 	struct delayed_work	pl_enable_work;
 	struct delayed_work	uusb_otg_work;
 	struct delayed_work	bb_removal_work;
+#ifdef CONFIG_TOUCHSCREEN_USB_CHECK
+	struct work_struct ctp_work;
+#endif /* CONFIG_TOUCHSCREEN_USB_CHECK */
 	struct delayed_work	usbov_dbc_work;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	struct delayed_work	uusb_recheck_work;
+	struct delayed_work vbus_reverse_boost_work;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+#ifdef CONFIG_HISENSE_SGM2540
+	struct delayed_work	magconn_gpio_id_work;
+#endif
+#ifdef CONFIG_HISENSE_TYPEC_OTG
+	struct delayed_work typec_gpio_id_work;
+#endif
 
 	/* alarm */
 	struct alarm		moisture_protection_alarm;
@@ -381,6 +397,11 @@ struct smb_charger {
 	int			fake_batt_status;
 	bool			step_chg_enabled;
 	bool			sw_jeita_enabled;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	int 		float_icl_ua;
+	int			custom_aicl_5v_thd;
+	bool		usbin_ov;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	bool			is_hdc;
 	bool			chg_done;
 	int			connector_type;
@@ -396,6 +417,12 @@ struct smb_charger {
 	u8			float_cfg;
 	bool			use_extcon;
 	bool			otg_present;
+#ifdef CONFIG_HISENSE_SGM2540
+	bool			mag_otg_present;
+#endif
+#ifdef CONFIG_HISENSE_TYPEC_OTG
+		bool			typec_otg_present;
+#endif
 	int			hw_max_icl_ua;
 	int			auto_recharge_soc;
 	bool			jeita_configured;
@@ -414,6 +441,16 @@ struct smb_charger {
 	int			charge_full_cc;
 	int			cc_soc_ref;
 	int			last_cc_soc;
+#ifdef CONFIG_HISENSE_SGM2540
+	int			magconn_otg_id_gpio;
+	int			magconn_otg_id_irq;
+#endif /*CONFIG_HISENSE_SGM2540*/
+#ifdef CONFIG_HISENSE_TYPEC_OTG
+		int 		typec_otg_id_gpio;
+		int 		typec_otg_id_irq;
+		int 		otg_switch_id_gpio;
+#endif /*CONFIG_HISENSE_TYPEC_OTG*/
+	int			char_done_flag;
 
 	/* workaround flag */
 	u32			wa_flags;
@@ -440,6 +477,10 @@ struct smb_charger {
 	bool			flash_active;
 };
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+int smblib_set_prop_safety_timer_enable(struct smb_charger * chg,const union power_supply_propval * val);
+int smblib_get_prop_safety_timer_enable(struct smb_charger * chg,union power_supply_propval * val);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
 int smblib_masked_write(struct smb_charger *chg, u16 addr, u8 mask, u8 val);
 int smblib_write(struct smb_charger *chg, u16 addr, u8 val);

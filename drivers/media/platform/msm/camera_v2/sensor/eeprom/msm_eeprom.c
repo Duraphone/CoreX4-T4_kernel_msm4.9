@@ -14,6 +14,9 @@
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
 #include <linux/crc32.h>
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+#include <linux/debugfs.h>
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
 #include "msm_sd.h"
 #include "msm_cci.h"
 #include "msm_eeprom.h"
@@ -25,13 +28,25 @@ DEFINE_MSM_MUTEX(msm_eeprom_mutex);
 #ifdef CONFIG_COMPAT
 static struct v4l2_file_operations msm_eeprom_v4l2_subdev_fops;
 #endif
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+#define OTP_STATE_SIZE  64
+typedef struct {
+	char otp_state[OTP_STATE_SIZE];
+} camera_otp_valid_t;
 
-/*
- * msm_get_read_mem_size - Get the total size for allocation
- * @eeprom_map_array:	mem map
- *
- * Returns size after computation size, returns error in case of error
- */
+static struct dentry *hsn_otp_dbg_node;
+static camera_otp_valid_t hsn_otp_valid[4];
+static char hsn_otp_dbg_buf[256];
+
+extern struct dentry *camera_dbg_root(void);
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
+
+/**
+  * msm_get_read_mem_size - Get the total size for allocation
+  * @eeprom_map_array:	mem map
+  *
+  * Returns size after computation size, returns error in case of error
+  */
 static int msm_get_read_mem_size
 	(struct msm_eeprom_memory_map_array *eeprom_map_array) {
 	int size = 0, i, j;
@@ -57,7 +72,8 @@ static int msm_get_read_mem_size
 			if ((eeprom_map->mem_settings[i].i2c_operation ==
 				MSM_CAM_READ) ||
 				(eeprom_map->mem_settings[i].i2c_operation ==
-				MSM_CAM_READ_LOOP)) {
+				MSM_CAM_READ_CONTINUOUS) //Hisense add for Hynix camera sensor
+				) { 
 				size += eeprom_map->mem_settings[i].reg_data;
 			}
 		}
@@ -327,10 +343,9 @@ ERROR:
 static int eeprom_parse_memory_map(struct msm_eeprom_ctrl_t *e_ctrl,
 	struct msm_eeprom_memory_map_array *eeprom_map_array)
 {
-	int rc =  0, i, j, gc;
+	int rc =  0, i, j;
+	int m; //Hisense add for Hynix camera sensor
 	uint8_t *memptr;
-	uint16_t gc_read = 0;
-
 	struct msm_eeprom_mem_map_t *eeprom_map;
 
 	e_ctrl->cal_data.mapdata = NULL;
@@ -410,41 +425,29 @@ static int eeprom_parse_memory_map(struct msm_eeprom_ctrl_t *e_ctrl,
 				memptr += eeprom_map->mem_settings[i].reg_data;
 			}
 			break;
-
-			case MSM_CAM_READ_LOOP: {
+			/*Hisense add for Hynix camera sensor */
+			case MSM_CAM_READ_CONTINUOUS: {
 				e_ctrl->i2c_client.addr_type =
-				 eeprom_map->mem_settings[i].addr_type;
-
-				for (gc = 0;
-					gc < eeprom_map->mem_settings[i].
-						reg_data;
-					gc++) {
-					msleep(eeprom_map->mem_settings[i].
-						delay);
+					eeprom_map->mem_settings[i].addr_type;
+				for (m = 0; m < eeprom_map->mem_settings[i].reg_data; m++){
 					rc = e_ctrl->i2c_client.i2c_func_tbl->
-						i2c_read(
-						&(e_ctrl->i2c_client),
-						eeprom_map->mem_settings[i].
-						reg_addr,
-						&gc_read,
-						eeprom_map->mem_settings[i].
-						data_type);
+						i2c_read_seq(&(e_ctrl->i2c_client),
+						eeprom_map->mem_settings[i].reg_addr,
+						memptr, 1 );
 					if (rc < 0) {
-						pr_err("%s: read failed\n",
-							__func__);
-						goto clean_up;
-					}
-					*memptr = (uint8_t)gc_read;
+					pr_err("%s: read failed\n",
+						__func__);
+					goto clean_up;
+						}
 					memptr++;
-				}
+					}
+				msleep(eeprom_map->mem_settings[i].delay);
 			}
 			break;
-
+			/*Hisense add for Hynix camera sensor*/
 			default:
-				pr_err("%s: %d Invalid i2c operation LC:%d, op: %d\n",
-					__func__, __LINE__, i,
-					eeprom_map->mem_settings[i].
-						i2c_operation);
+				pr_err("%s: %d Invalid i2c operation LC:%d\n",
+					__func__, __LINE__, i);
 				return -EINVAL;
 			}
 		}
@@ -1723,6 +1726,97 @@ static long msm_eeprom_subdev_fops_ioctl32(struct file *file, unsigned int cmd,
 
 #endif
 
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+static int eeprom_dbg_open(struct inode *inode, struct file *filp)
+{
+	CDBG("%s Enter.\n", __func__);
+	filp->private_data = inode->i_private;
+	return 0;
+}
+
+static ssize_t eeprom_dbg_read(struct file *filp, char __user *buffer,
+	size_t count, loff_t *ppos)
+{
+	int i, otp_num, len;
+	int offset = 0;
+
+	CDBG("%s Enter. cnt=%d *ppos=%lld\n", __func__, (int)count, (*ppos));
+
+	if (*ppos > 0) {
+		*ppos = 0;
+		return 0;
+	}
+
+	otp_num = sizeof(hsn_otp_valid)/sizeof(hsn_otp_valid[0]);
+	memset(hsn_otp_dbg_buf, 0, sizeof(hsn_otp_dbg_buf));
+
+	for (i = 0; i < otp_num; i++) {
+
+		CDBG("hsn_otp_valid[%d] %s\n", i, hsn_otp_valid[i].otp_state);
+
+		if (strlen(hsn_otp_valid[i].otp_state) > 0) {
+			len = snprintf(hsn_otp_dbg_buf + offset, sizeof(hsn_otp_dbg_buf) - offset, "%s;", hsn_otp_valid[i].otp_state);
+			offset += len;
+		}
+	}
+
+	if (copy_to_user(buffer, hsn_otp_dbg_buf, offset))
+		return -EFAULT;
+
+	*ppos += offset;
+
+	CDBG("%s Exit.\n", __func__);
+	return offset;
+}
+
+static ssize_t eeprom_dbg_write(struct file *filp, const char __user *buffer,
+	size_t count, loff_t *ppos)
+{
+	int i, otp_num;
+
+	CDBG("%s Enter. cnt=%d *ppos=%lld", __func__, (int)count, (*ppos));
+
+	if (*ppos >= OTP_STATE_SIZE)
+		return 0;
+	if (*ppos + count > OTP_STATE_SIZE)
+		count = OTP_STATE_SIZE - *ppos;
+
+	memset(hsn_otp_dbg_buf, 0, sizeof(hsn_otp_dbg_buf));
+	if (copy_from_user(hsn_otp_dbg_buf, buffer, count))
+		return -EFAULT;
+
+	otp_num = sizeof(hsn_otp_valid)/sizeof(hsn_otp_valid[0]);
+	for (i = 0; i < otp_num; i++) {
+		CDBG("hsn_otp_valid[%d] %s\n", i, hsn_otp_valid[i].otp_state);
+		if (!strncmp(hsn_otp_dbg_buf, hsn_otp_valid[i].otp_state, 6)
+			|| !strlen(hsn_otp_valid[i].otp_state)) {
+			break;
+		}
+	}
+	if (i >= otp_num) {
+		CDBG("hsn_otp_valid[%d] overflow.\n", i);
+		return -EFAULT;
+	}
+
+	memset(hsn_otp_valid[i].otp_state, 0,
+		sizeof(hsn_otp_valid[i].otp_state));
+	strlcpy(hsn_otp_valid[i].otp_state,
+		hsn_otp_dbg_buf, OTP_STATE_SIZE - 1);
+
+	*ppos = 0;
+
+	CDBG("%s Exit.\n", __func__);
+
+	return count;
+}
+
+static const struct file_operations eeprom_debug_fops = {
+	.owner = THIS_MODULE,
+	.open = eeprom_dbg_open,
+	.read = eeprom_dbg_read,
+	.write = eeprom_dbg_write,
+};
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
 static int msm_eeprom_platform_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -1734,6 +1828,9 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	struct msm_eeprom_board_info *eb_info = NULL;
 	struct device_node *of_node = pdev->dev.of_node;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+    struct dentry *cam_dbg_root = NULL;
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
 
 	CDBG("%s E\n", __func__);
 
@@ -1878,6 +1975,21 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 		}
 	} else
 		e_ctrl->is_supported = 1;
+
+#ifdef CONFIG_HMCT_CAMERA_DEBUG
+    cam_dbg_root = camera_dbg_root();
+    if (cam_dbg_root) {
+		if (!hsn_otp_dbg_node) {
+			memset(hsn_otp_valid, 0, sizeof(hsn_otp_valid));
+			hsn_otp_dbg_node = debugfs_create_file("otp_state",
+				0644, cam_dbg_root, NULL, &eeprom_debug_fops);
+			if (!hsn_otp_dbg_node) {
+				pr_err("%s:%d debugfs_create_file otp_valid fail!\n",
+					__func__, __LINE__);
+			}
+		}
+    }
+#endif /* CONFIG_HMCT_CAMERA_DEBUG */
 
 	v4l2_subdev_init(&e_ctrl->msm_sd.sd,
 		e_ctrl->eeprom_v4l2_subdev_ops);

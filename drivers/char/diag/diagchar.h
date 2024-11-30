@@ -224,7 +224,7 @@
 #define PERIPHERAL_CDSP		5
 #define NUM_PERIPHERALS		6
 #define APPS_DATA		(NUM_PERIPHERALS)
-
+#define MODEM_AND_APPS_DATA 10
 #define UPD_WLAN		7
 #define UPD_AUDIO		8
 #define UPD_SENSORS		9

@@ -461,6 +461,7 @@ int show_interrupts(struct seq_file *p, void *v)
 		seq_printf(p, "%*s", prec + 8, "");
 		for_each_online_cpu(j)
 			seq_printf(p, "CPU%-8d", j);
+
 		seq_putc(p, '\n');
 	}
 
@@ -479,6 +480,7 @@ int show_interrupts(struct seq_file *p, void *v)
 	seq_printf(p, "%*d: ", prec, i);
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", kstat_irqs_cpu(i, j));
+
 
 	if (desc->irq_data.chip) {
 		if (desc->irq_data.chip->irq_print_chip)

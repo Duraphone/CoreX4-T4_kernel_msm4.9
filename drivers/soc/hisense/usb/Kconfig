@@ -1,0 +1,28 @@
+config HISENSE_BACKDOOR_CHOOSE
+	bool "HISENSE_BACKDOOR_CHOOSE_FEATURE"
+	depends on HISENSE_USB_FEATURE
+	default n
+	help
+	  Implement CHOOSE Hisense USB adb backdoor feature.
+
+config HISENSE_USB_GPIO_ID_FEATURE
+	bool "Enable hisense usb gpio id feature"
+	depends on MACH_HISENSE_SMARTPHONE
+	default n
+	help
+	  Enable the config if enable hisense usb feature.
+	  If unsure, say N
+
+config HISENSE_OTG_FEATURE
+	bool "HISENSE_OTG_FEATURE"
+	default n
+	help
+	  Enable the config if enable hisense otg feature .
+	  If unsure, say N
+	  
+config HISENSE_TYPEC_OTG
+	bool "HISENSE_TYPEC_OTG"
+	default n
+	help
+	  Enable the config if enable hisense typec otg feature .
+	  If unsure, say N

@@ -87,8 +87,12 @@ static ssize_t power_supply_show_property(struct device *dev,
 	struct power_supply *psy = dev_get_drvdata(dev);
 	const ptrdiff_t off = attr - power_supply_attrs;
 	union power_supply_propval value;
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	if ((off == POWER_SUPPLY_PROP_TYPE)
+		&& (strcmp(psy->desc->name, "usb"))) {
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	if (off == POWER_SUPPLY_PROP_TYPE) {
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		value.intval = psy->desc->type;
 	} else {
 		ret = power_supply_get_property(psy, off, &value);
@@ -127,6 +131,11 @@ static ssize_t power_supply_show_property(struct device *dev,
 	else if (off == POWER_SUPPLY_PROP_SCOPE)
 		return scnprintf(buf, PAGE_SIZE, "%s\n",
 				scope_text[value.intval]);
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	else if(off == POWER_SUPPLY_PROP_CHARGER_TYPE)
+		return sprintf(buf, "%s\n",
+				type_text[value.intval]);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	else if (off == POWER_SUPPLY_PROP_TYPEC_MODE)
 		return scnprintf(buf, PAGE_SIZE, "%s\n",
 				typec_text[value.intval]);
@@ -275,6 +284,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(buck_freq),
 	POWER_SUPPLY_ATTR(boost_current),
 	POWER_SUPPLY_ATTR(safety_timer_enabled),
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	POWER_SUPPLY_ATTR(charger_type),
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	POWER_SUPPLY_ATTR(charge_done),
 	POWER_SUPPLY_ATTR(flash_active),
 	POWER_SUPPLY_ATTR(flash_trigger),
@@ -346,6 +358,13 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(real_capacity),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
+#ifdef CONFIG_HISENSE_SGM2540
+	POWER_SUPPLY_ATTR(charger_redet),
+	POWER_SUPPLY_ATTR(double_charger),
+#endif /* CONFIG_HISENSE_SGM2540 */
+#ifdef CONFIG_SGM2540
+	POWER_SUPPLY_ATTR(charger_redet),
+#endif /* CONFIG_HISENSE_SGM2540 */
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),

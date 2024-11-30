@@ -54,6 +54,7 @@
 #include "dbm.h"
 #include "debug.h"
 #include "xhci.h"
+#include <linux/his_debug_base.h>
 
 #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
 
@@ -3611,6 +3612,42 @@ static ssize_t xhci_link_compliance_store(struct device *dev,
 
 static DEVICE_ATTR_RW(xhci_link_compliance);
 
+static int disable_otg_flag;
+
+static ssize_t type_c_disable_otg_store(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t len)
+{
+	if (sscanf(buf, "%d", &disable_otg_flag) != 1) {
+		pr_err("debug_store: sscanf is wrong!\n");
+		return -EINVAL;
+	}
+
+	printk("typec disable by force .\n");
+	return len;
+}
+
+static ssize_t type_c_disable_otg_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", !!disable_otg_flag);
+}
+
+static DEVICE_ATTR(type_c_disable_otg, S_IWUSR | S_IWGRP | S_IRUGO,
+                type_c_disable_otg_show, type_c_disable_otg_store);
+
+static void type_c_disable_otg_control_init(void)
+{
+	int ret = 0;
+
+	ret = his_register_sysfs_attr(&dev_attr_type_c_disable_otg.attr);
+	if (ret < 0) {
+		pr_err("Error creating type_c_disable_otg sysfs node, ret=%d\n", ret);
+		return;
+	}
+
+	pr_info("%s: OK.\n", __func__);
+}
+
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -3980,6 +4017,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		dwc3_ext_event_notify(mdwc);
 	}
 
+	type_c_disable_otg_control_init();
 	return 0;
 
 put_psy:
@@ -4215,6 +4253,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	int ret = 0;
 
+	if (disable_otg_flag) {
+		pr_err("%s:disable otg vbus\n", __func__);
+		return !!disable_otg_flag;
+	}
 	/*
 	 * The vbus_reg pointer could have multiple values
 	 * NULL: regulator_get() hasn't been called, or was previously deferred

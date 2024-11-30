@@ -35,6 +35,7 @@
 #include "mdss_debug.h"
 #include "mdss_dsi_phy.h"
 #include "mdss_dba_utils.h"
+#include <linux/productinfo.h>
 
 #define XO_CLK_RATE	19200000
 #define CMDLINE_DSI_CTL_NUM_STRING_LEN 2
@@ -44,6 +45,14 @@ static struct mdss_dsi_data *mdss_dsi_res;
 
 #define DSI_DISABLE_PC_LATENCY 100
 #define DSI_ENABLE_PC_LATENCY PM_QOS_DEFAULT_VALUE
+
+char compatible_lcd_panel_name[MDSS_MAX_PANEL_NAME_LEN] = "";
+int compatible_lcd_panel_number = 0;
+static const char *com_panel_name;
+
+extern void ts_reset_for_lcd_use(void); //hmct add for incell TP reset control
+extern int ts_supend_need_power_reset_high(void); //hmct add for TP gesture's resource control
+extern bool ts_suspend_need_lcd_reset_high(void);//hmct add for TP reset control
 
 static struct pm_qos_request mdss_dsi_pm_qos_request;
 
@@ -383,6 +392,19 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 		ret = 0;
 	}
 
+	/* close pmic first, then close vdd and xon */
+	if (gpio_is_valid(ctrl_pdata->epd_i2c_en))
+		gpio_direction_output((ctrl_pdata->epd_i2c_en), 0);
+	if (gpio_is_valid(ctrl_pdata->epd_power_on))
+		gpio_direction_output((ctrl_pdata->epd_power_on), 0);
+	if (gpio_is_valid(ctrl_pdata->dsi2dpi_vdcc_en))
+		gpio_direction_output((ctrl_pdata->dsi2dpi_vdcc_en), 0);
+	if (gpio_is_valid(ctrl_pdata->epd_xon))
+		gpio_direction_output((ctrl_pdata->epd_xon), 0);
+
+	if (gpio_is_valid(ctrl_pdata->vdd_en))
+		gpio_direction_output((ctrl_pdata->vdd_en), 0);
+	if (!ts_supend_need_power_reset_high()) {  //hmct add for TP gesture's resource control 
 	if (gpio_is_valid(ctrl_pdata->vdd_ext_gpio)) {
 		ret = gpio_direction_output(
 			ctrl_pdata->vdd_ext_gpio, 0);
@@ -391,8 +413,10 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 					__func__);
 	}
 
+		if(!ts_suspend_need_lcd_reset_high()) {
 	if (mdss_dsi_pinctrl_set_state(ctrl_pdata, false))
 		pr_debug("reset disable: pinctrl not enabled\n");
+		}
 
 	ret = msm_mdss_enable_vreg(
 		ctrl_pdata->panel_power_data.vreg_config,
@@ -400,7 +424,7 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 	if (ret)
 		pr_err("%s: failed to disable vregs for %s\n",
 			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
-
+	} //hmct add for TP gesture's resource control
 end:
 	return ret;
 }
@@ -417,7 +441,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
-
+	if (!ts_supend_need_power_reset_high()) {  //hmct add for TP gesture's resource control 
 	if (gpio_is_valid(ctrl_pdata->vdd_ext_gpio)) {
 		ret = gpio_direction_output(
 				ctrl_pdata->vdd_ext_gpio, 1);
@@ -435,7 +459,31 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
 		return ret;
 	}
+	} //hmct add for TP gesture's resource control
 
+	/*Hisense modified*/
+	if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
+		pr_debug("reset enable: pinctrl not enabled\n");
+
+	/* hisense add for incell TP reset control */
+	if (pdata->panel_info.cont_splash_enabled ||
+		pdata->panel_info.mipi.lp11_init)
+			ts_reset_for_lcd_use();
+	if (gpio_is_valid(ctrl_pdata->epd_power_on))
+		gpio_direction_output((ctrl_pdata->epd_power_on), 1);
+	if (gpio_is_valid(ctrl_pdata->epd_xon))
+		gpio_direction_output((ctrl_pdata->epd_xon), 1);
+	if (gpio_is_valid(ctrl_pdata->dsi2dpi_vdcc_en))
+		gpio_direction_output((ctrl_pdata->dsi2dpi_vdcc_en), 1);
+	if (gpio_is_valid(ctrl_pdata->epd_i2c_en))
+		gpio_direction_output((ctrl_pdata->epd_i2c_en), 1);
+	if (gpio_is_valid(ctrl_pdata->vdd_en))
+		gpio_direction_output((ctrl_pdata->vdd_en), 1);
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	if (gpio_is_valid(ctrl_pdata->icn_vdcen_gpio))
+		gpio_direction_output((ctrl_pdata->icn_vdcen_gpio), 1);
+	usleep_range(5000, 5000);
+#endif
 	/*
 	 * If continuous splash screen feature is enabled, then we need to
 	 * request all the GPIOs that have already been configured in the
@@ -444,9 +492,11 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	 */
 	if (pdata->panel_info.cont_splash_enabled ||
 		!pdata->panel_info.mipi.lp11_init) {
+		/*
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
-
+		*/
+		/*Hisense modify end*/
 		ret = mdss_dsi_panel_reset(pdata, 1);
 		if (ret)
 			pr_err("%s: Panel reset failed. rc=%d\n",
@@ -1510,6 +1560,146 @@ static int mdss_dsi_update_panel_config(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
 	return ret;
 }
 
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+static void mdss_spi_panel_write_cmd(struct mdss_dsi_ctrl_pdata *ctrl_pdata, int data)
+{
+	int i = 0;
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 0);
+	gpio_direction_output((ctrl_pdata->spi_clk_gpio), 0);
+
+	gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 0);
+	gpio_direction_output((ctrl_pdata->spi_clk_gpio), 1);
+
+	for (i = 0; i < 8; i++)
+	{
+		gpio_direction_output((ctrl_pdata->spi_clk_gpio), 0);
+		if ((data & 0x80) == 0x80){
+			gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 1);
+		}else{
+			gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 0);
+		}
+		gpio_direction_output((ctrl_pdata->spi_clk_gpio), 1);
+		data = data << 1;
+	}
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 1);
+}
+
+static void mdss_spi_panel_write_data(struct mdss_dsi_ctrl_pdata *ctrl_pdata, int data)
+{
+	int i = 0;
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 0);
+
+	gpio_direction_output((ctrl_pdata->spi_clk_gpio), 0);
+	gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 1);
+	gpio_direction_output((ctrl_pdata->spi_clk_gpio), 1);
+
+	for (i = 0; i < 8; i++)
+	{
+		gpio_direction_output((ctrl_pdata->spi_clk_gpio), 0);
+		if ((data & 0x80) == 0x80){
+			gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 1);
+		}else{
+			gpio_direction_output((ctrl_pdata->spi_mosi_gpio), 0);
+		}
+		gpio_direction_output((ctrl_pdata->spi_clk_gpio), 1);
+		data = data << 1;
+	}
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 1);
+}
+
+void mdss_spi_panel_display_on(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
+{
+	int i,j;
+	struct mdss_panel_info *pinfo = NULL;
+	struct spi_panel_cmds *spi_on_cmds;
+	char *payload = NULL;
+	int cnt,cmd_len;
+
+	if (ctrl_pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return;
+	}
+
+	if (!gpio_is_valid(ctrl_pdata->spi_cs_gpio) || !gpio_is_valid(ctrl_pdata->spi_clk_gpio) || !gpio_is_valid(ctrl_pdata->spi_mosi_gpio))
+		return;
+	printk("%s +: \n", __func__);
+
+	////spi panel reset sequence
+	pinfo = &(ctrl_pdata->panel_data.panel_info);
+	for (i = 0; i < pinfo->rst_seq_len; ++i) {
+		gpio_set_value((ctrl_pdata->rst_gpio),
+			pinfo->rst_seq[i]);
+		if (pinfo->rst_seq[++i])
+			usleep_range(pinfo->rst_seq[i] * 1000, pinfo->rst_seq[i] * 1000);
+	}
+
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 1);
+	udelay(5);
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 0);
+	udelay(50);
+
+	spi_on_cmds = &ctrl_pdata->spi_on_cmds;
+	pr_buf_info("%s: cmd_cnt=%d\n", __func__,spi_on_cmds->cmd_cnt);
+
+	cnt = spi_on_cmds->cmd_cnt;
+	if(cnt){
+		for(i = 0; i < cnt; i++){
+			cmd_len = spi_on_cmds->cmds[i].hdr.dlen;
+			payload = spi_on_cmds->cmds[i].payload;
+			if(!cmd_len || (payload == NULL)){
+				pr_err("%s: spi	panel config error", __func__);
+				return;
+			}
+
+			if(cmd_len > 1)	{
+				pr_debug("payload[%d]:%x",i,*payload);
+				mdss_spi_panel_write_cmd(ctrl_pdata,*payload++);
+				for(j = 1; j < cmd_len; j++){
+					pr_debug(" %x",*payload);
+					mdss_spi_panel_write_data(ctrl_pdata,*payload++);
+				}
+				pr_debug("\n");
+			}else{
+				pr_debug("payload[%d]:%x\n",i,*payload);
+				mdss_spi_panel_write_cmd(ctrl_pdata,*payload);
+			}
+			if(spi_on_cmds->cmds[i].hdr.wait != 0){
+				pr_debug("melay:%d\n",spi_on_cmds->cmds[i].hdr.wait);
+				mdelay(spi_on_cmds->cmds[i].hdr.wait);
+			}
+		}
+	}
+
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 1);
+	mdelay(20);
+
+	printk("%s -: \n", __func__);
+
+}
+
+static void mdss_spi_panel_display_off(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
+{
+	if (ctrl_pdata == NULL) {
+		pr_err("%s: Invalid input ctrl_pdata\n", __func__);
+		return;
+	}
+
+	if (!gpio_is_valid(ctrl_pdata->spi_cs_gpio) || !gpio_is_valid(ctrl_pdata->spi_clk_gpio) || !gpio_is_valid(ctrl_pdata->spi_mosi_gpio))
+		return;
+	printk("%s: \n", __func__);
+
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 1);
+	udelay(5);
+	gpio_direction_output((ctrl_pdata->spi_cs_gpio), 0);
+	udelay(50);
+	mdss_spi_panel_write_cmd(ctrl_pdata,0x28);
+	mdelay(20);
+	mdss_spi_panel_write_cmd(ctrl_pdata,0x10);
+	mdelay(120);
+	gpio_direction_output((ctrl_pdata->rst_gpio), 0);
+}
+#endif
+
 int mdss_dsi_on(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
@@ -1597,8 +1787,12 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	 * data lanes for LP11 init
 	 */
 	if (mipi->lp11_init) {
+		/*Hisense modify start
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
+		*/
+		usleep_range(5000, 5000);
+		/*Hisense modify end*/
 		mdss_dsi_panel_reset(pdata, 1);
 	}
 
@@ -1617,6 +1811,9 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	if (pdata->panel_info.type == MIPI_CMD_PANEL)
 		mdss_dsi_clk_ctrl(ctrl_pdata, ctrl_pdata->dsi_clk_handle,
 				  MDSS_DSI_ALL_CLKS, MDSS_DSI_CLK_OFF);
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	mdss_spi_panel_display_on(ctrl_pdata);
+#endif
 
 end:
 	pr_debug("%s-:\n", __func__);
@@ -1813,7 +2010,9 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata, int power_state)
 		mipi->vsync_enable && mipi->hw_vsync_mode) {
 		mdss_dsi_set_tear_off(ctrl_pdata);
 	}
-
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	mdss_spi_panel_display_off(ctrl_pdata);
+#endif
 	if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
 		if (!pdata->panel_info.dynamic_switch_pending) {
 			ATRACE_BEGIN("dsi_panel_off");
@@ -3001,6 +3200,21 @@ static struct device_node *mdss_dsi_find_panel_of_node(
 			       __func__, __LINE__);
 			return NULL;
 		}
+		for_each_node_with_property(mdss_node,"qcom,mdss-dsi-panel-name")
+		{
+			com_panel_name = of_get_property(mdss_node, "qcom,mdss-dsi-panel-name", NULL);
+				if (!com_panel_name)
+					pr_info("Get compatible panel name failed!\n");
+				else {
+					compatible_lcd_panel_number += 1;
+					strlcat(compatible_lcd_panel_name,com_panel_name,MDSS_MAX_PANEL_NAME_LEN);
+					strlcat(compatible_lcd_panel_name,"\\",MDSS_MAX_PANEL_NAME_LEN);
+					pr_info("compatible_lcd_panel_name = \n%s number = %d\n", compatible_lcd_panel_name,compatible_lcd_panel_number);
+				}
+		}
+
+		productinfo_register(PRODUCTINFO_LCD_COMPATIBLE_ID, compatible_lcd_panel_name, NULL);
+
 		dsi_pan_node = of_find_node_by_name(mdss_node, panel_name);
 		if (!dsi_pan_node) {
 			pr_err("%s: invalid pan node \"%s\"\n",
@@ -4240,8 +4454,223 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 	if (!gpio_is_valid(ctrl_pdata->intf_mux_gpio))
 		pr_debug("%s:%d, intf mux gpio not specified\n",
 						__func__, __LINE__);
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	ctrl_pdata->icn_reset_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-icn-reset-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->icn_reset_gpio)) {
+		pr_info("%s:%d, icn reset gpio not specified\n",
+			__func__,  __LINE__);
+	}
+	ctrl_pdata->icn_vdcen_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-icnvdc-enable-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->icn_vdcen_gpio)) {
+		pr_info("%s:%d, icn vdcen gpio not specified\n",
+			__func__,  __LINE__);
+	}
+	ctrl_pdata->spi_clk_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-spi-clk-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->spi_clk_gpio)) {
+		pr_info("%s:%d, spi clk gpio not specified\n",
+			__func__,  __LINE__);
+	}
+	ctrl_pdata->spi_cs_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-spi-cs-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->spi_cs_gpio)) {
+		pr_info("%s:%d, spi cs gpio not specified\n",
+			__func__,  __LINE__);
+	}
+	ctrl_pdata->spi_mosi_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-spi-mosi-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->spi_mosi_gpio)) {
+		pr_info("%s:%d, spi mosi gpio not specified\n",
+			__func__,  __LINE__);
+	}
+#endif
+	/* hisense add */
+	ctrl_pdata->epd_xon = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-epd-xon-gpio", 0);
+
+	ctrl_pdata->epd_power_on = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-epd-power-on-gpio", 0);
+
+	ctrl_pdata->dsi2dpi_vdcc_en = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-dsi2dpi-vdcc-en-gpio", 0);
+
+	ctrl_pdata->epd_i2c_en = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-epd-i2c-en", 0);
+
+	ctrl_pdata->vdd_en = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,platform-vdd-en", 0);
 
 	return 0;
+}
+
+static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
+
+{
+	int rc = 0;
+
+	if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
+		rc = gpio_request(ctrl_pdata->disp_en_gpio,
+						"disp_enable");
+		if (rc) {
+			pr_err("request disp_en gpio failed, rc=%d\n",
+				       rc);
+			goto disp_en_gpio_err;
+		}
+	}
+	rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
+	if (rc) {
+		pr_err("request reset gpio failed, rc=%d\n",
+			rc);
+		goto rst_gpio_err;
+	}
+
+
+	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio)) {
+		rc = gpio_request(ctrl_pdata->bklt_en_gpio,
+						"bklt_enable");
+		if (rc) {
+			pr_err("request bklt gpio failed, rc=%d\n",
+				       rc);
+			goto bklt_en_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
+		rc = gpio_request(ctrl_pdata->mode_gpio, "panel_mode");
+		if (rc) {
+			pr_err("request panel mode gpio failed,rc=%d\n",
+								rc);
+			goto mode_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->epd_xon)) {
+		rc = gpio_request(ctrl_pdata->epd_xon, "epd_xon");
+		if (rc) {
+			pr_err("request epd xon gpio failed, rc = %d\n",
+				rc);
+			goto epd_xon_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->epd_power_on)) {
+		rc = gpio_request(ctrl_pdata->epd_power_on, "epd_pwr_on");
+		if (rc) {
+			pr_err("request epd power on gpio failed, rc = %d\n",
+				rc);
+			goto epd_pwrup_gpio_err;
+		}
+	}
+
+	if (gpio_is_valid(ctrl_pdata->dsi2dpi_vdcc_en)) {
+		rc = gpio_request(ctrl_pdata->dsi2dpi_vdcc_en, "dsi2dpi_vdcc_en");
+		if (rc) {
+			pr_err("request dsi2dpi vdcc enable gpio failed, rc = %d\n",
+				rc);
+			goto dsi2dpi_vdcc_en_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->epd_i2c_en)) {
+		rc = gpio_request(ctrl_pdata->epd_i2c_en, "epd_i2c_en");
+		if (rc) {
+			pr_err("request epd i2c enable gpio failed, rc = %d\n",
+				rc);
+			goto epd_i2c_en_gpio_err;
+		}
+	}
+
+	if (gpio_is_valid(ctrl_pdata->vdd_en)) {
+		rc = gpio_request(ctrl_pdata->vdd_en, "vdd_en");
+		if (rc) {
+			pr_err("request vdd enable gpio failed, rc = %d\n",
+				rc);
+			goto vdd_en_err;
+		}
+	}
+#ifdef CONFIG_FB_HS_MDSS_SPI_PANEL
+	if (gpio_is_valid(ctrl_pdata->icn_reset_gpio)) {
+		rc = gpio_request(ctrl_pdata->icn_reset_gpio, "icn_reset");
+		if (rc) {
+			pr_err("request icn_reset gpio failed, rc=%d\n",
+				rc);
+			goto icn_reset_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->icn_vdcen_gpio)) {
+		rc = gpio_request(ctrl_pdata->icn_vdcen_gpio, "icn_vdcen");
+		if (rc) {
+			pr_err("request icn vdcen gpio failed, rc=%d\n",
+				rc);
+			goto icn_vdcen_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->spi_clk_gpio)) {
+		rc = gpio_request(ctrl_pdata->spi_clk_gpio, "spi_clk");
+		if (rc) {
+			pr_err("request spi clk gpio failed, rc=%d\n",
+				rc);
+			goto spi_clk_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->spi_cs_gpio)) {
+		rc = gpio_request(ctrl_pdata->spi_cs_gpio, "spi_cs");
+		if (rc) {
+			pr_err("request spi cs gpio failed, rc=%d\n",
+				rc);
+			goto spi_cs_gpio_err;
+		}
+	}
+	if (gpio_is_valid(ctrl_pdata->spi_mosi_gpio)) {
+		rc = gpio_request(ctrl_pdata->spi_mosi_gpio, "spi_mosi");
+		if (rc) {
+			pr_err("request spi mosi gpio failed, rc=%d\n",
+				rc);
+			goto spi_mosi_gpio_err;
+		}
+	}
+	return rc;
+spi_mosi_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->spi_cs_gpio))
+		gpio_free(ctrl_pdata->spi_cs_gpio);
+spi_cs_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->spi_clk_gpio))
+		gpio_free(ctrl_pdata->spi_clk_gpio);
+spi_clk_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->icn_vdcen_gpio))
+		gpio_free(ctrl_pdata->icn_vdcen_gpio);
+icn_vdcen_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->icn_reset_gpio))
+		gpio_free(ctrl_pdata->icn_reset_gpio);
+icn_reset_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->dsi2dpi_vdcc_en))
+		gpio_free(ctrl_pdata->dsi2dpi_vdcc_en);
+#else
+	return rc;
+#endif
+vdd_en_err:
+	if (gpio_is_valid(ctrl_pdata->epd_i2c_en))
+		gpio_free(ctrl_pdata->epd_i2c_en);
+epd_i2c_en_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->dsi2dpi_vdcc_en))
+		gpio_free(ctrl_pdata->dsi2dpi_vdcc_en);
+dsi2dpi_vdcc_en_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->epd_power_on))
+		gpio_free(ctrl_pdata->epd_power_on);
+epd_pwrup_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->epd_xon))
+		gpio_free(ctrl_pdata->epd_xon);
+epd_xon_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->mode_gpio))
+		gpio_free(ctrl_pdata->mode_gpio);
+mode_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio))
+		gpio_free(ctrl_pdata->bklt_en_gpio);
+bklt_en_gpio_err:
+	gpio_free(ctrl_pdata->rst_gpio);
+rst_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+		gpio_free(ctrl_pdata->disp_en_gpio);
+disp_en_gpio_err:
+	return rc;
 }
 
 static void mdss_dsi_set_prim_panel(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
@@ -4332,6 +4761,13 @@ int dsi_panel_device_register(struct platform_device *ctrl_pdev,
 						__func__, rc);
 		return rc;
 	}
+     /*add gpio request func*/
+	rc = mdss_dsi_request_gpios(ctrl_pdata);
+	if (rc) {
+		pr_err("gpio request failed\n");
+		return -ENODEV;
+	}
+    /*add end*/
 
 	if (mdss_dsi_retrieve_ctrl_resources(ctrl_pdev,
 					     pinfo->pdest,

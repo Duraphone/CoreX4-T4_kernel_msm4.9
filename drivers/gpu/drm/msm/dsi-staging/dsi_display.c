@@ -31,6 +31,7 @@
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
+#include <linux/his_debug_base.h>
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -157,6 +158,8 @@ int dsi_display_set_backlight(void *display, u32 bl_lvl)
 		rc = -EINVAL;
 		goto error;
 	}
+
+	his_set_curr_backlight_state(bl_lvl);
 
 	panel->bl_config.bl_level = bl_lvl;
 

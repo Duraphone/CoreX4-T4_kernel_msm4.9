@@ -45,6 +45,7 @@
 #include <asm/system_misc.h>
 #include <asm/sysreg.h>
 #include <trace/events/exception.h>
+#include <linux/his_debug_base.h>
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -322,11 +323,15 @@ void die(const char *str, struct pt_regs *regs, int err)
 	unsigned long flags = oops_begin();
 	int ret;
 
+	run_fs_sync_work();
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->pc, regs);
 	if (bug_type != BUG_TRAP_TYPE_NONE && !strlen(str))
 		str = "Oops - BUG";
 
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+	subsystem_report("kernel", str, true);
+#endif /* CONFIG_SUBSYS_ERR_REPORT */
 	ret = __die(str, err, regs);
 
 	oops_end(flags, regs, ret);

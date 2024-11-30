@@ -40,6 +40,10 @@
 #include <linux/of_device.h>
 #include <linux/wait.h>
 
+#ifdef CONFIG_HISENSE_SERIAL_CONSOLE_CTRL
+#include <linux/his_debug_base.h>
+#endif /* CONFIG_HISENSE_SERIAL_CONSOLE_CTRL */
+
 #define UART_MR1			0x0000
 
 #define UART_MR1_AUTO_RFR_LEVEL0	0x3F
@@ -1936,6 +1940,13 @@ static struct platform_driver msm_platform_driver = {
 static int __init msm_serial_init(void)
 {
 	int ret;
+
+#ifdef CONFIG_HISENSE_SERIAL_CONSOLE_CTRL
+    if (!get_debug_flag_bit(SERIAL_ENABLE_BIT)) {
+        msm_uart_driver.cons = NULL;
+        pr_info("disable console register\n");
+    }
+#endif /* CONFIG_HISENSE_SERIAL_CONSOLE_CTRL */
 
 	ret = uart_register_driver(&msm_uart_driver);
 	if (unlikely(ret))

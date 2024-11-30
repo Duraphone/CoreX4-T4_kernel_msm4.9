@@ -7,7 +7,7 @@
  * Based on code from fs/super.c, copyright Linus Torvalds and others.
  * Heavily rewritten.
  */
-
+#define pr_fmt(fmt) "FS:" fmt
 #include <linux/syscalls.h>
 #include <linux/export.h>
 #include <linux/capability.h>
@@ -3068,6 +3068,7 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 	char *kernel_type;
 	char *kernel_dev;
 	void *options;
+	static bool need_log = true;
 
 	kernel_type = copy_mount_string(type);
 	ret = PTR_ERR(kernel_type);
@@ -3085,7 +3086,10 @@ SYSCALL_DEFINE5(mount, char __user *, dev_name, char __user *, dir_name,
 		goto out_data;
 
 	ret = do_mount(kernel_dev, dir_name, kernel_type, flags, options);
-
+	if (!ret && need_log) {
+		need_log = false;
+		pr_buf_info("%s  %s  PowerOn\n",kernel_dev,kernel_type);
+	}
 	kfree(options);
 out_data:
 	kfree(kernel_dev);

@@ -28,8 +28,9 @@
 		clock-names = "iface_clk";
 		clock-rate = <0>;
 
+		/* hmct delete
 		qcom,dsi-pll-ssc-en;
-		qcom,dsi-pll-ssc-mode = "down-spread";
+		qcom,dsi-pll-ssc-mode = "down-spread"; */
 		/* Memory region for passing dynamic refresh pll codes */
 		memory-region = <&dfps_data_mem>;
 

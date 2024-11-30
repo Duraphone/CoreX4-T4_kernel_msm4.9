@@ -16,6 +16,8 @@
 #include <linux/stat.h>
 #include <linux/fault-inject.h>
 #include <linux/uaccess.h>
+#include <linux/his_debug_base.h>
+
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -30,6 +32,10 @@ static char *fail_request;
 module_param(fail_request, charp, 0);
 
 #endif /* CONFIG_FAIL_MMC_REQUEST */
+
+/*add start: add device node for getting status of TFCard holder in factory mode */
+extern int sdcard_status_global;
+/*add end*/
 
 /* The debugfs functions are optimized away when CONFIG_DEBUG_FS isn't set. */
 static int mmc_ring_buffer_show(struct seq_file *s, void *data)
@@ -251,6 +257,25 @@ static int mmc_clock_opt_set(void *data, u64 val)
 
 	return 0;
 }
+
+
+/*add start: add device node for getting status of TFCard holder in factory mode */
+static ssize_t sdcard_status_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int value;
+
+	if (sdcard_status_global == -ENOSYS)
+		value = 3;
+	else
+		value = sdcard_status_global;
+
+	return sprintf(buf, "%d\n", value);
+}
+
+static DEVICE_ATTR(sdcard_status, S_IRUGO,
+		sdcard_status_show, NULL);
+/*add end*/
 
 DEFINE_SIMPLE_ATTRIBUTE(mmc_clock_fops, mmc_clock_opt_get, mmc_clock_opt_set,
 	"%llu\n");
@@ -525,6 +550,14 @@ void mmc_add_host_debugfs(struct mmc_host *host)
 		&mmc_force_err_fops))
 		goto err_node;
 
+	/*add start: add device node for getting status of TFCard holder in factory mode */
+	if(host->index == 0) {
+		if ( his_register_sysfs_attr(&dev_attr_sdcard_status.attr) < 0) {
+			pr_err("Error creating sdcard_status sysfs node\n");
+			goto err_node;
+		}
+	}
+	/*add end*/
 	return;
 
 err_node:

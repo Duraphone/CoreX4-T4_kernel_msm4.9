@@ -369,6 +369,9 @@ struct mmc_card {
 #define MMC_STATE_SUSPENDED	(1<<6)		/* card is suspended */
 #define MMC_STATE_CMDQ		(1<<12)         /* card is in cmd queue mode */
 #define MMC_STATE_AUTO_BKOPS	(1<<13)		/* card is doing auto BKOPS */
+#ifdef CONFIG_MMC_FFU
+#define MMC_STATE_FFUED		(1<<22)		/* card has been FFUed */
+#endif /*CONFIG_MMC_FFU*/
 	unsigned int		quirks; 	/* card quirks */
 #define MMC_QUIRK_LENIENT_FN0	(1<<0)		/* allow SDIO FN0 writes outside of the VS CCCR range */
 #define MMC_QUIRK_BLKSZ_FOR_BYTE_MODE (1<<1)	/* use func->cur_blksize */
@@ -500,6 +503,7 @@ struct mmc_fixup {
 #define CID_MANFID_SAMSUNG      0x15
 #define CID_MANFID_KINGSTON     0x70
 #define CID_MANFID_HYNIX	0x90
+#define CID_MANFID_NUMONYX_MICRON 0xfe
 
 #define END_FIXUP { NULL }
 

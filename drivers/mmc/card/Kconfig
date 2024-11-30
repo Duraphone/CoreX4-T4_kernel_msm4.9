@@ -79,6 +79,11 @@ config MMC_TEST
 
 	  This driver is only of interest to those developing or
 	  testing a host driver. Most people should say N here.
+config SD_ERR_CHECK
+	bool "SD ERR CHECK SUPPORT"
+	default n
+	help
+	  This is an option to check sd err status.
 
 config MMC_SIMULATE_MAX_SPEED
 	bool "Turn on maximum speed control per block device"

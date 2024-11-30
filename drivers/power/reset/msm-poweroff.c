@@ -34,6 +34,8 @@
 #include <soc/qcom/restart.h>
 #include <soc/qcom/watchdog.h>
 #include <soc/qcom/minidump.h>
+#include <linux/his_debug_base.h>
+#include <soc/qcom/subsystem_restart.h>
 
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
@@ -49,6 +51,14 @@
 #define SCM_DLOAD_MINIDUMP		0X20
 #define SCM_DLOAD_BOTHDUMPS	(SCM_DLOAD_MINIDUMP | SCM_DLOAD_FULLDUMP)
 
+#define LK_ENABLE_DBG_FLAG		(0x4847<<16)
+
+extern void set_subsys_restart_level(int level);
+extern void hs_set_pm_pon_resin(int debug);
+static void set_dload_mode(int on);
+
+static int debug_flag;
+static struct delayed_work check_lk_flag_work;
 static int restart_mode;
 static void *restart_reason;
 static bool scm_pmic_arbiter_disable_supported;
@@ -117,6 +127,88 @@ static struct notifier_block panic_blk = {
 	.notifier_call	= panic_prep_restart,
 };
 
+int hs_get_debug_flag(void)
+{
+	return debug_flag;
+}
+
+static void hs_enable_debug(int value)
+{
+	if (0 == value) {
+		debug_flag = 0;
+		/* only restart subsystem */
+		set_subsys_restart_level(RESET_SUBSYS_COUPLED);
+	} else {
+		debug_flag = 1;
+		/* restart whole system */
+		set_subsys_restart_level(RESET_SOC);
+	}
+
+	hs_set_pm_pon_resin(debug_flag);
+	set_dload_mode(1);
+	/* Set RTB Debug */
+	hs_set_rtb_flag(debug_flag);
+}
+
+static ssize_t debug_flag_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	int value;
+
+	if (sscanf(buf, "%d", &value) != 1) {
+		pr_err("debug_store: sscanf is wrong!\n");
+		return -EINVAL;
+	}
+	hs_enable_debug(value);
+
+	return len;
+}
+
+static ssize_t debug_flag_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", debug_flag);
+}
+
+static DEVICE_ATTR(debug_flag, S_IWUSR | S_IWGRP | S_IRUGO,
+		debug_flag_show, debug_flag_store);
+
+static void hs_debug_control_init(void)
+{
+	int ret;
+
+	ret = his_register_sysfs_attr(&dev_attr_debug_flag.attr);
+	if (ret < 0) {
+		pr_err("Error creating debug_flag sysfs node\n");
+		return;
+	}
+	pr_info("%s: OK.\n", __func__);
+}
+
+static void hs_check_lk_flag_work(struct work_struct *work)
+{
+	pr_info("hs_check_lk_flag_work enter\n");
+	hs_enable_debug(1);
+}
+
+static void hs_check_lk_flag(void)
+{
+	int read_data = 0;
+
+	if (dload_mode_addr) {
+		read_data = __raw_readl(dload_mode_addr + 2*sizeof(int));
+		if (LK_ENABLE_DBG_FLAG == (read_data & 0xffff0000)) {
+			pr_info("LK set debug enable.\n");
+			debug_flag = 1;
+			INIT_DELAYED_WORK(&check_lk_flag_work,
+				hs_check_lk_flag_work);
+			schedule_delayed_work(&check_lk_flag_work,
+				msecs_to_jiffies(5000));
+		}
+	}
+
+}
+
 static int scm_set_dload_mode(int arg1, int arg2)
 {
 	struct scm_desc desc = {
@@ -145,7 +237,17 @@ static void set_dload_mode(int on)
 	int ret;
 
 	if (dload_mode_addr) {
-		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
+		if (restart_mode != RESTART_DLOAD) {
+			if (1 == debug_flag)
+				__raw_writel(on ? 0xE47B337D : 0,
+						dload_mode_addr);
+			else
+				__raw_writel(on ? 0xE47B337C : 0,
+						dload_mode_addr);
+		} else
+			__raw_writel(on ? 0xE47B337E : 0,
+					dload_mode_addr);
+
 		__raw_writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
 		/* Make sure the download cookie is updated */
@@ -337,34 +439,26 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_KEYS_CLEAR);
 			__raw_writel(0x7766550a, restart_reason);
-		} else if (!strncmp(cmd, "oem-", 4)) {
-			unsigned long code;
-			unsigned long reset_reason;
-			int ret;
-
-			ret = kstrtoul(cmd + 4, 16, &code);
-			if (!ret) {
-				/* Bit-2 to bit-7 of SOFT_RB_SPARE for hard
-				 * reset reason:
-				 * Value 0 to 31 for common defined features
-				 * Value 32 to 63 for oem specific features
-				 */
-				reset_reason = code +
-						PON_RESTART_REASON_OEM_MIN;
-				if (reset_reason > PON_RESTART_REASON_OEM_MAX ||
-				   reset_reason < PON_RESTART_REASON_OEM_MIN) {
-					pr_err("Invalid oem reset reason: %lx\n",
-						reset_reason);
-				} else {
-					qpnp_pon_set_restart_reason(
-						reset_reason);
-				}
-				__raw_writel(0x6f656d00 | (code & 0xff),
-					     restart_reason);
-			}
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
+		} else if (!strncmp(cmd, "hs-pwroff-chg", 13)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_HS_PWROFF_CHG);
+		} else if (!strncmp(cmd, "engtest", 7)) {
+			printk(KERN_ERR"engtest is valid\n");
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_HS_ENG_TEST);
+		} else if (!strncmp(cmd, "initlog", 7)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_HS_INIT_LOG);
+#ifdef CONFIG_HISENSE_SILENCE_REBOOT
+		} else if (!strncmp(cmd, "silence", 7)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_HS_SIL_REBOOT);
+#endif /* CONFIG_HISENSE_SILENCE_REBOOT */
 		} else {
+			/*adb reboot save into pmic reg*/
+			qpnp_pon_set_restart_reason(
+					PON_RESTART_REASON_HS_NORMAL_REBOOT);
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
@@ -588,6 +682,9 @@ static int msm_restart_probe(struct platform_device *pdev)
 	np = of_find_compatible_node(NULL, NULL, DL_MODE_PROP);
 	if (!np) {
 		pr_err("unable to find DT imem DLOAD mode node\n");
+		pr_err("unable to find DT imem DLOAD mode node,need to BUG on\n");
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+		BUG();
 	} else {
 		dload_mode_addr = of_iomap(np, 0);
 		if (!dload_mode_addr)
@@ -624,6 +721,10 @@ static int msm_restart_probe(struct platform_device *pdev)
 		iounmap(kaslr_imem_addr);
 	}
 #endif
+
+	hs_check_lk_flag();
+	hs_debug_control_init();
+
 	np = of_find_compatible_node(NULL, NULL,
 				"qcom,msm-imem-dload-type");
 	if (!np) {

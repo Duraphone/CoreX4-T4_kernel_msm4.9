@@ -29,12 +29,28 @@
 
 typedef uid_t userid_t;
 typedef uid_t appid_t;
+#ifdef CONFIG_MULTI_USER_ID
+extern unsigned long  app_divid_id;
+extern bool app_divid_node_be_set;
+#endif/*CONFIG_MULTI_USER_ID*/
 
 static inline uid_t multiuser_get_uid(userid_t user_id, appid_t app_id)
 {
+	#ifdef CONFIG_MULTI_USER_ID
+	if((user_id == app_divid_id) && app_divid_node_be_set)		
+		user_id = 0;
+	#endif/*CONFIG_MULTI_USER_ID*/
 	return (user_id * AID_USER_OFFSET) + (app_id % AID_USER_OFFSET);
 }
 
+#ifdef CONFIG_MULTI_USER_ID
+static inline uid_t multiuser_get_hs_uid(userid_t user_id, appid_t app_id)
+{
+	if(user_id == 0)
+		user_id = app_divid_id;
+	return (user_id * AID_USER_OFFSET) + (app_id % AID_USER_OFFSET);
+}
+#endif/*CONFIG_MULTI_USER_ID*/
 static inline bool uid_is_app(uid_t uid)
 {
 	appid_t appid = uid % AID_USER_OFFSET;

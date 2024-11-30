@@ -499,4 +499,42 @@ static inline void print_hex_dump_debug(const char *prefix_str, int prefix_type,
 }
 #endif
 
+#ifdef CONFIG_SUBSYS_ERR_REPORT
+extern void subsystem_report(const char *subsys_name, const char *err_log,
+		bool flag);
+#endif /* CONFIG_SUBSYS_ERR_REPORT */
+
+extern int boot_ftm_mode;
+
+#define HS_ERROR_FLAG          "HSERR: "
+#define HS_INFO_FLAG           "HSINFO: "
+#define FACTORY_FLAG           "FTLOG: "
+
+#define pr_ftm_log(fmt, ...) \
+	do { \
+		if (boot_ftm_mode == 1) \
+			printk(KERN_ERR FACTORY_FLAG pr_fmt(fmt), ##__VA_ARGS__); \
+	} while(0)
+
+#ifdef CONFIG_EXCEPTION_MONITOR
+extern int print_exmlog(const char *fmt, ...);
+
+#define pr_buf_err(fmt, ...) \
+	do { \
+		print_exmlog(HS_ERROR_FLAG pr_fmt(fmt), ##__VA_ARGS__); \
+		printk(KERN_ERR HS_ERROR_FLAG pr_fmt(fmt), ##__VA_ARGS__); \
+	} while(0)
+
+#define pr_buf_info(fmt, ...) \
+	do { \
+		print_exmlog(HS_INFO_FLAG pr_fmt(fmt), ##__VA_ARGS__); \
+		printk(KERN_INFO HS_INFO_FLAG pr_fmt(fmt), ##__VA_ARGS__); \
+	} while(0)
+
+#else /* CONFIG_EXCEPTION_MONITOR */
+#define pr_buf_err   pr_err
+#define pr_buf_info  pr_info
+#endif /* CONFIG_EXCEPTION_MONITOR */
+
+
 #endif

@@ -54,6 +54,7 @@
 #include <trace/events/almk.h>
 #include <linux/show_mem_notifier.h>
 
+
 #ifdef CONFIG_HIGHMEM
 #define _ZONE ZONE_HIGHMEM
 #else
@@ -801,8 +802,11 @@ static struct shrinker lowmem_shrinker = {
 	.seeks = DEFAULT_SEEKS * 16
 };
 
+
+
 static int __init lowmem_init(void)
 {
+
 	register_shrinker(&lowmem_shrinker);
 	vmpressure_notifier_register(&lmk_vmpr_nb);
 	lmk_event_init();

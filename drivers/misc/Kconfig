@@ -843,6 +843,23 @@ config QPNP_MISC
 	  and the driver provides an API to check if this interrupt
 	  is available on the current PMIC chip.
 
+config USB_EXT_TYPE_C_WUSB3801
+	tristate "USB Type-C charger detection support using WUSB3801 chip"
+	depends on I2C && POWER_SUPPLY
+	help
+	  Enables support for the USB Type-C chargers using external
+	  TI chip connected using I2C.
+
+	  This adds support for detecting USB Type-C chargers that
+	  can supply upto 3A Vbus current for charging.
+	  
+config HISENSE_SGM2540
+	bool "double charger input ic"
+	depends on MACH_HISENSE_SMARTPHONE
+	default n
+	help
+	  Enable it double charger input ic
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

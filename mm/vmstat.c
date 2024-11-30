@@ -946,6 +946,10 @@ const char * const vmstat_text[] = {
 	"numa_other",
 #endif
 	"nr_free_cma",
+#ifdef CONFIG_HISENSE_UNMOVABLE_ISOLATE
+	"nr_free_unmovable_isolate1",
+	"nr_free_unmovable_isolate2",
+#endif /* CONFIG_HISENSE_UNMOVABLE_ISOLATE */
 
 	/* Node-based counters */
 	"nr_inactive_anon",

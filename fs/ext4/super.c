@@ -15,6 +15,7 @@
  *  Big-endian to little-endian byte-swapping/bitmaps by
  *        David S. Miller (davem@caip.rutgers.edu), 1995
  */
+#define pr_fmt(fmt) "FS:" fmt
 
 #include <linux/module.h>
 #include <linux/string.h>
@@ -442,9 +443,8 @@ void __ext4_error(struct super_block *sb, const char *function,
 		va_start(args, fmt);
 		vaf.fmt = fmt;
 		vaf.va = &args;
-		printk(KERN_CRIT
-		       "EXT4-fs error (device %s): %s:%d: comm %s: %pV\n",
-		       sb->s_id, function, line, current->comm, &vaf);
+		pr_buf_err("EXT4-fs error (device %s): %s:%d: comm %s: %pV\n",
+		       sb->s_id, function, line, current->comm, &vaf);	   
 		va_end(args);
 	}
 	save_error_info(sb, function, line);
@@ -466,12 +466,12 @@ void __ext4_error_inode(struct inode *inode, const char *function,
 		vaf.fmt = fmt;
 		vaf.va = &args;
 		if (block)
-			printk(KERN_CRIT "EXT4-fs error (device %s): %s:%d: "
+			pr_buf_err("EXT4-fs error (device %s): %s:%d: "
 			       "inode #%lu: block %llu: comm %s: %pV\n",
 			       inode->i_sb->s_id, function, line, inode->i_ino,
 			       block, current->comm, &vaf);
 		else
-			printk(KERN_CRIT "EXT4-fs error (device %s): %s:%d: "
+			pr_buf_err("EXT4-fs error (device %s): %s:%d: "
 			       "inode #%lu: comm %s: %pV\n",
 			       inode->i_sb->s_id, function, line, inode->i_ino,
 			       current->comm, &vaf);
@@ -501,14 +501,12 @@ void __ext4_error_file(struct file *file, const char *function,
 		vaf.fmt = fmt;
 		vaf.va = &args;
 		if (block)
-			printk(KERN_CRIT
-			       "EXT4-fs error (device %s): %s:%d: inode #%lu: "
+			pr_buf_err("EXT4-fs error (device %s): %s:%d: inode #%lu: "
 			       "block %llu: comm %s: path %s: %pV\n",
 			       inode->i_sb->s_id, function, line, inode->i_ino,
 			       block, current->comm, path, &vaf);
 		else
-			printk(KERN_CRIT
-			       "EXT4-fs error (device %s): %s:%d: inode #%lu: "
+			pr_buf_err("EXT4-fs error (device %s): %s:%d: inode #%lu: "
 			       "comm %s: path %s: %pV\n",
 			       inode->i_sb->s_id, function, line, inode->i_ino,
 			       current->comm, path, &vaf);
@@ -3496,7 +3494,7 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	if (!(bh = sb_bread_unmovable(sb, logical_sb_block))) {
-		ext4_msg(sb, KERN_ERR, "unable to read superblock");
+		pr_buf_err("EXT4-fs(%s):unable to read superblock\n",sb->s_id);
 		goto out_fail;
 	}
 	/*
@@ -3764,8 +3762,7 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		offset = do_div(logical_sb_block, blocksize);
 		bh = sb_bread_unmovable(sb, logical_sb_block);
 		if (!bh) {
-			ext4_msg(sb, KERN_ERR,
-			       "Can't read superblock on 2nd try");
+			pr_buf_err("EXT4-fs(%s):Can't read superblock on 2nd try\n",sb->s_id);
 			goto failed_mount;
 		}
 		es = (struct ext4_super_block *)(bh->b_data + offset);
@@ -4754,8 +4751,7 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 
 		error = buffer_write_io_error(sbh);
 		if (error) {
-			ext4_msg(sb, KERN_ERR, "I/O error while writing "
-			       "superblock");
+			pr_buf_err("EXT4-fs(%s):I/O error while writing superblock\n",sb->s_id);
 			clear_buffer_write_io_error(sbh);
 			set_buffer_uptodate(sbh);
 		}

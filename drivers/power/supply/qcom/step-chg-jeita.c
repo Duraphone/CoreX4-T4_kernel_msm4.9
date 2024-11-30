@@ -31,9 +31,15 @@
 			&& (value) <= (right)))
 
 struct range_data {
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	int low_threshold;
+	int high_threshold;
+	int value;
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	u32 low_threshold;
 	u32 high_threshold;
 	u32 value;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 };
 
 struct step_chg_cfg {
@@ -132,9 +138,15 @@ static bool is_usb_available(struct step_chg_info *chip)
 	return true;
 }
 
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+static int read_range_data_from_node(struct device_node *node,
+		const char *prop_str, struct range_data *ranges,
+		int max_threshold, int max_value)
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static int read_range_data_from_node(struct device_node *node,
 		const char *prop_str, struct range_data *ranges,
 		u32 max_threshold, u32 max_value)
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 {
 	int rc = 0, i, length, per_tuple_length, tuples;
 
@@ -167,6 +179,8 @@ static int read_range_data_from_node(struct device_node *node,
 	}
 
 	for (i = 0; i < tuples; i++) {
+		pr_err("%s ranges[i].low_threshold=%d,ranges[i].high_threshold=%d\n",
+						prop_str,ranges[i].low_threshold,ranges[i].high_threshold);
 		if (ranges[i].low_threshold >
 				ranges[i].high_threshold) {
 			pr_err("%s thresholds should be in ascendant ranges\n",
@@ -322,7 +336,7 @@ static void get_config_work(struct work_struct *work)
 		if (rc == -ENODEV || rc == -EBUSY) {
 			if (chip->get_config_retry_count++
 					< GET_CONFIG_RETRY_COUNT) {
-				pr_debug("bms_psy is not ready, retry: %d\n",
+				pr_err("bms_psy is not ready, retry: %d\n",
 						chip->get_config_retry_count);
 				goto reschedule;
 			}
@@ -332,17 +346,17 @@ static void get_config_work(struct work_struct *work)
 	chip->config_is_read = true;
 
 	for (i = 0; i < MAX_STEP_CHG_ENTRIES; i++)
-		pr_debug("step-chg-cfg: %duV(SoC) ~ %duV(SoC), %duA\n",
+		pr_err("step-chg-cfg: %duV(SoC) ~ %duV(SoC), %duA\n",
 			chip->step_chg_config->fcc_cfg[i].low_threshold,
 			chip->step_chg_config->fcc_cfg[i].high_threshold,
 			chip->step_chg_config->fcc_cfg[i].value);
 	for (i = 0; i < MAX_STEP_CHG_ENTRIES; i++)
-		pr_debug("jeita-fcc-cfg: %ddecidegree ~ %ddecidegre, %duA\n",
+		pr_err("jeita-fcc-cfg: %ddecidegree ~ %ddecidegre, %duA\n",
 			chip->jeita_fcc_config->fcc_cfg[i].low_threshold,
 			chip->jeita_fcc_config->fcc_cfg[i].high_threshold,
 			chip->jeita_fcc_config->fcc_cfg[i].value);
 	for (i = 0; i < MAX_STEP_CHG_ENTRIES; i++)
-		pr_debug("jeita-fv-cfg: %ddecidegree ~ %ddecidegre, %duV\n",
+		pr_err("jeita-fv-cfg: %ddecidegree ~ %ddecidegre, %duV\n",
 			chip->jeita_fv_config->fv_cfg[i].low_threshold,
 			chip->jeita_fv_config->fv_cfg[i].high_threshold,
 			chip->jeita_fv_config->fv_cfg[i].value);
@@ -498,8 +512,12 @@ reschedule:
 	/* reschedule 1000uS after the remaining time */
 	return (STEP_CHG_HYSTERISIS_DELAY_US - elapsed_us + 1000);
 }
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+bool jeita_bat_ov = false;
+#define JEITA_SUSPEND_HYST_UV		150000
+#else /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 #define JEITA_SUSPEND_HYST_UV		50000
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static int handle_jeita(struct step_chg_info *chip)
 {
 	union power_supply_propval pval = {0, };
@@ -582,6 +600,8 @@ static int handle_jeita(struct step_chg_info *chip)
 		goto set_jeita_fv;
 	}
 
+	pr_err("%s = %d FCC = %duA FV = %duV\n",
+		chip->jeita_fcc_config->prop_name, pval.intval, fcc_ua, fv_uv);
 	/*
 	 * Suspend USB input path if battery voltage is above
 	 * JEITA VFLOAT threshold.
@@ -589,10 +609,19 @@ static int handle_jeita(struct step_chg_info *chip)
 	if (fv_uv > 0) {
 		rc = power_supply_get_property(chip->batt_psy,
 				POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval);
-		if (!rc && (pval.intval > fv_uv))
+		if (!rc && (pval.intval > fv_uv)) {
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+			pr_err("%s: JEITA suspend input\n", __func__);
+			jeita_bat_ov = true;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 			vote(chip->usb_icl_votable, JEITA_VOTER, true, 0);
-		else if (pval.intval < (fv_uv - JEITA_SUSPEND_HYST_UV))
+		} else if (pval.intval < (fv_uv - JEITA_SUSPEND_HYST_UV)) {
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+			pr_err("%s: JEITA recover input\n", __func__);
+			jeita_bat_ov = false;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 			vote(chip->usb_icl_votable, JEITA_VOTER, false, 0);
+		}
 	}
 
 set_jeita_fv:
@@ -799,6 +828,10 @@ int qcom_step_chg_init(struct device *dev,
 			msecs_to_jiffies(GET_CONFIG_DELAY_MS));
 
 	the_chip = chip;
+
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	jeita_bat_ov = false;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	return 0;
 

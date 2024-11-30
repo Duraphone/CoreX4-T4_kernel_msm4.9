@@ -40,7 +40,9 @@
 #include "qg-battery-profile.h"
 #include "qg-defs.h"
 
-static int qg_debug_mask;
+static int qg_debug_mask = QG_DEBUG_IRQ | QG_DEBUG_STATUS 
+							| QG_DEBUG_SOC | QG_DEBUG_DEVICE |
+							QG_DEBUG_PON;
 module_param_named(
 	debug_mask, qg_debug_mask, int, 0600
 );
@@ -1518,6 +1520,11 @@ static const char *qg_get_battery_type(struct qpnp_qg *chip)
 #define BATT_MISSING_SOC	50
 #define EMPTY_SOC		0
 #define FULL_SOC		100
+
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+bool full_soc_flag = 0;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
+
 static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 {
 	if (is_debug_batt_id(chip)) {
@@ -1541,6 +1548,12 @@ static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 		*soc = chip->maint_soc;
 	else
 		*soc = chip->msoc;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		if (100 == *soc)
+			full_soc_flag = true;
+		else
+			full_soc_flag = false;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 
 	mutex_unlock(&chip->soc_lock);
 
@@ -1634,6 +1647,14 @@ static int qg_get_ttf_param(void *data, enum ttf_param param, int *val)
 	case TTF_CHG_STATUS:
 		*val = chip->charge_status;
 		break;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	case TTF_TEMP:
+		qg_get_battery_temp(chip, val);
+		break;
+	case TTF_DEAD_MV:
+		*val = chip->dt.vbatt_empty_mv;	
+		break;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	default:
 		pr_err("Unsupported property %d\n", param);
 		rc = -EINVAL;
@@ -1879,6 +1900,9 @@ static const struct power_supply_desc qg_psy_desc = {
 };
 
 #define DEFAULT_RECHARGE_SOC 95
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+bool chg_full_status = 0;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 static int qg_charge_full_update(struct qpnp_qg *chip)
 {
 	union power_supply_propval prop = {0, };
@@ -1911,6 +1935,9 @@ static int qg_charge_full_update(struct qpnp_qg *chip)
 	if (chip->charge_done && !chip->charge_full) {
 		if (chip->msoc >= 99 && health == POWER_SUPPLY_HEALTH_GOOD) {
 			chip->charge_full = true;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+			chg_full_status = true;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 			qg_dbg(chip, QG_DEBUG_STATUS, "Setting charge_full (0->1) @ msoc=%d\n",
 					chip->msoc);
 		} else if (health != POWER_SUPPLY_HEALTH_GOOD) {
@@ -1956,6 +1983,9 @@ static int qg_charge_full_update(struct qpnp_qg *chip)
 				qg_scale_soc(chip, false);
 			}
 			chip->charge_full = false;
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+			chg_full_status = false;
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 			qg_dbg(chip, QG_DEBUG_STATUS, "msoc=%d recharge_soc=%d charge_full (1->0)\n",
 					chip->msoc, recharge_soc);
 		} else {
@@ -2717,7 +2747,12 @@ use_pon_ocv:
 						(full_soc - cutoff_soc));
 		else
 			soc = pon_soc;
-
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+		if(soc > 100) {
+			pr_err("@@%s:soc=%d\n",__func__,soc);
+			soc = 100;
+		}
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 		qg_dbg(chip, QG_DEBUG_PON, "v_float=%d v_cutoff=%d FULL_SOC=%d CUTOFF_SOC=%d PON_SYS_SOC=%d pon_soc=%d\n",
 			chip->bp.float_volt_uv, chip->dt.vbatt_cutoff_mv * 1000,
 			full_soc, cutoff_soc, soc, pon_soc);
@@ -3786,6 +3821,9 @@ static int qpnp_qg_probe(struct platform_device *pdev)
 	mutex_init(&chip->bus_lock);
 	mutex_init(&chip->soc_lock);
 	mutex_init(&chip->data_lock);
+#ifdef CONFIG_HISENSE_CHARGE_FG_FUNCTION
+	mutex_init(&chip->bat_temp_lock);
+#endif /*CONFIG_HISENSE_CHARGE_FG_FUNCTION*/
 	init_waitqueue_head(&chip->qg_wait_q);
 	chip->maint_soc = -EINVAL;
 	chip->batt_soc = INT_MIN;

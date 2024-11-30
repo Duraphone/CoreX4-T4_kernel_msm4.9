@@ -109,15 +109,17 @@ struct mmc_ioc_multi_cmd {
 #define MMC_IOC_MAX_RPMB_CMD	3
 struct mmc_ioc_rpmb {
 	struct mmc_ioc_cmd cmds[MMC_IOC_MAX_RPMB_CMD];
-}
-;
+};
+
 /*
  * This ioctl is meant for use with rpmb partitions. This is needed since the
  * access procedure for this particular partition is different from regular
  * or normal partitions.
  */
 #define MMC_IOC_RPMB_CMD _IOWR(MMC_BLOCK_MAJOR, 0, struct mmc_ioc_rpmb)
-
+#ifdef CONFIG_MMC_FFU
+#define MMC_IOC_FFU_CMD _IOWR(MMC_BLOCK_MAJOR, 2, struct mmc_ioc_cmd)
+#endif /*CONFIG_MMC_FFU*/
 /*
  * Since this ioctl is only meant to enhance (and not replace) normal access
  * to the mmc bus device, an upper data transfer limit of MMC_IOC_MAX_BYTES
@@ -126,4 +128,7 @@ struct mmc_ioc_rpmb {
  */
 #define MMC_IOC_MAX_BYTES  (512L * 256)
 #define MMC_IOC_MAX_CMDS    255
+#ifdef CONFIG_MMC_FFU
+#define MMC_FFU_IOC_MAX_BYTES  (512L * 1024)
+#endif /*CONFIG_MMC_FFU*/
 #endif /* LINUX_MMC_IOCTL_H */
